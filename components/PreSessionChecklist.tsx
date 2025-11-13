@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useCallback } from 'react';
 import { DeepWorkSession, RitualItem } from '../types';
 import { CameraIcon } from './icons';
@@ -50,6 +51,7 @@ export const PreSessionChecklist: React.FC<PreSessionChecklistProps> = ({ sessio
         </button>
         <h2 className="text-2xl font-bold text-cyan-400">Pre-flight Checklist</h2>
         <p className="text-slate-400">Prepare for deep focus on "{session.taskName}"</p>
+        <p className="text-slate-300 mt-1"><strong>Goal:</strong> {session.goal}</p>
       </div>
       
       <div className="space-y-4">

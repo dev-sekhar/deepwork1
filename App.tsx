@@ -9,10 +9,11 @@ import { TaskReviewModal } from './components/TaskReviewModal';
 import { PlusIcon } from './components/icons';
 
 type AppView = 'DASHBOARD' | 'SCHEDULING' | 'FOCUS' | 'PRE_SESSION_CHECKLIST';
-type ScheduleView = 'TODAY' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
+type ScheduleView = 'TODAY' | 'ONCE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
 const scheduleViewOptions: { name: string; value: ScheduleView }[] = [
     { name: 'Today', value: 'TODAY' },
+    { name: 'One-Time', value: 'ONCE' },
     { name: 'Daily', value: 'DAILY' },
     { name: 'Weekly', value: 'WEEKLY' },
     { name: 'Monthly', value: 'MONTHLY' },
@@ -86,6 +87,29 @@ const getNextExecutionInfo = (item: ScheduleItem): string => {
     }
 };
 
+const getTypeStyles = (type: ScheduleItemType) => {
+    switch (type) {
+        case ScheduleItemType.DEEP_WORK:
+            return 'text-cyan-400 bg-cyan-900/50';
+        case ScheduleItemType.SHALLOW_WORK:
+            return 'text-indigo-400 bg-indigo-900/50';
+        // Fix: Add AI_ASSISTED_WORK case.
+        case ScheduleItemType.AI_ASSISTED_WORK:
+            return 'text-violet-400 bg-violet-900/50';
+        default:
+            return 'text-slate-400 bg-slate-700';
+    }
+};
+
+const getTypeText = (type: ScheduleItemType) => {
+    switch (type) {
+        case ScheduleItemType.DEEP_WORK: return 'DEEP';
+        case ScheduleItemType.SHALLOW_WORK: return 'SHALLOW';
+        // Fix: Add AI_ASSISTED_WORK case.
+        case ScheduleItemType.AI_ASSISTED_WORK: return 'AI ASSISTED';
+        default: return 'TASK';
+    }
+}
 
 const ScheduleListItem: React.FC<{
     item: ScheduleItem;
@@ -93,17 +117,24 @@ const ScheduleListItem: React.FC<{
     onReview: (id: string) => void;
     scheduleView: ScheduleView;
 }> = ({ item, onStart, onReview, scheduleView }) => {
-    const startTime = new Date(item.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const itemDate = new Date(item.startDate);
+    const timeString = itemDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const dateString = itemDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 
     return (
         <div className="bg-slate-800 p-4 rounded-lg flex items-center justify-between shadow-md hover:bg-slate-700/50 transition-colors duration-300">
             <div className="flex items-center gap-4">
-                 <p className="text-lg font-mono text-cyan-400">{startTime}</p>
+                 <div className="text-center w-24 flex-shrink-0">
+                    <p className="text-lg font-mono text-cyan-400">{timeString}</p>
+                    {scheduleView === 'ONCE' && (
+                        <p className="text-xs text-slate-400 mt-1">{dateString}</p>
+                    )}
+                </div>
                  <div>
                     <h3 className="font-semibold text-lg text-white">{item.taskName}</h3>
                     <div className="flex items-center gap-4 text-sm text-slate-400">
-                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${item.type === ScheduleItemType.DEEP_WORK ? 'text-cyan-400 bg-cyan-900/50' : 'text-indigo-400 bg-indigo-900/50'}`}>
-                            {item.type === ScheduleItemType.DEEP_WORK ? 'DEEP' : 'SHALLOW'}
+                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${getTypeStyles(item.type)}`}>
+                            {getTypeText(item.type)}
                         </span>
                         <p>{item.durationMinutes} min</p>
                         {item.repeatFrequency !== 'ONCE' && (
@@ -190,7 +221,7 @@ const App: React.FC = () => {
         if (sessionToStart.type === ScheduleItemType.DEEP_WORK) {
             setCurrentView('PRE_SESSION_CHECKLIST');
         } else {
-            setCurrentView('FOCUS'); // Shallow work goes straight to focus
+            setCurrentView('FOCUS');
         }
     }
   }, [schedule]);
@@ -202,7 +233,7 @@ const App: React.FC = () => {
       }
   }, [schedule]);
 
-  const handleUpdateActiveSession = useCallback((updatedSession: DeepWorkSession) => {
+  const handleUpdateActiveSession = useCallback((updatedSession: ScheduleItem) => {
       setActiveSession(updatedSession);
       setSchedule(prev => prev.map(s => s.id === updatedSession.id ? updatedSession : s));
   }, []);
@@ -240,6 +271,12 @@ const App: React.FC = () => {
   const todaysSchedule = useMemo(() => {
     const today = new Date();
     return getTasksForDate(schedule, today);
+  }, [schedule]);
+
+  const oneTimeSchedule = useMemo(() => {
+    return schedule
+        .filter(item => item.repeatFrequency === 'ONCE')
+        .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
   }, [schedule]);
 
   const dailySchedule = useMemo(() => {
@@ -290,7 +327,7 @@ const App: React.FC = () => {
               Schedule New Item
             </button>
             
-            <div className="grid grid-cols-4 gap-2 p-1 bg-slate-800 rounded-lg">
+            <div className="grid grid-cols-5 gap-2 p-1 bg-slate-800 rounded-lg">
                 {scheduleViewOptions.map(({name, value}) => (
                     <button key={value} onClick={() => setScheduleView(value)} className={`px-3 py-2 rounded-md text-sm font-semibold transition capitalize ${scheduleView === value ? 'bg-cyan-500 text-slate-900' : 'bg-transparent hover:bg-slate-700'}`}>
                         {name}
@@ -306,6 +343,18 @@ const App: React.FC = () => {
                             <p className="text-center text-slate-400 py-8">No items scheduled for today.</p>
                         ) : (
                             todaysSchedule.map(item => (
+                                <ScheduleListItem key={item.id} item={item} onStart={handleStartSession} onReview={handleReviewTask} scheduleView={scheduleView} />
+                            ))
+                        )}
+                    </>
+                )}
+                 {scheduleView === 'ONCE' && (
+                    <>
+                        <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">One-Time Tasks</h2>
+                        {oneTimeSchedule.length === 0 ? (
+                            <p className="text-center text-slate-400 py-8">No one-time tasks scheduled.</p>
+                        ) : (
+                            oneTimeSchedule.map(item => (
                                 <ScheduleListItem key={item.id} item={item} onStart={handleStartSession} onReview={handleReviewTask} scheduleView={scheduleView} />
                             ))
                         )}

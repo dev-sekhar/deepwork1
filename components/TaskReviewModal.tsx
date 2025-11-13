@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { ScheduleItem, ScheduleItemType } from '../types';
+import { ScheduleItem, ScheduleItemType, DeepWorkSession } from '../types';
 
 interface TaskReviewModalProps {
   item: ScheduleItem;
@@ -39,13 +40,19 @@ export const TaskReviewModal: React.FC<TaskReviewModalProps> = ({ item, onClose 
             <div className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg">
                 <span className="font-medium text-slate-300">Type</span>
                  <span className={`text-xs font-bold px-2 py-1 rounded-full ${item.type === ScheduleItemType.DEEP_WORK ? 'text-cyan-400 bg-cyan-900/50' : 'text-indigo-400 bg-indigo-900/50'}`}>
-                    {item.type === ScheduleItemType.DEEP_WORK ? 'DEEP' : 'SHALLOW'} WORK
+                    {item.type.replace('_', ' ')}
                  </span>
             </div>
              <div className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg">
                 <span className="font-medium text-slate-300">Duration</span>
                 <span className="text-white font-mono">{item.durationMinutes} minutes</span>
             </div>
+             {item.type === ScheduleItemType.DEEP_WORK && (
+                <div className="p-3 bg-slate-700/50 rounded-lg">
+                    <p className="font-medium text-slate-300 mb-1">Goal</p>
+                    <p className="text-white bg-slate-900/50 p-2 rounded">{(item as DeepWorkSession).goal}</p>
+                </div>
+            )}
             <div className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg">
                 <span className="font-medium text-slate-300">Focus Quality</span>
                 {renderStars(item.feedback.focusQuality)}
