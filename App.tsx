@@ -106,7 +106,7 @@ const ScheduleListItem: React.FC<{
                             {item.type === ScheduleItemType.DEEP_WORK ? 'DEEP' : 'SHALLOW'}
                         </span>
                         <p>{item.durationMinutes} min</p>
-                        {item.repeatFrequency !== 'NONE' && (
+                        {item.repeatFrequency !== 'ONCE' && (
                             <div className="flex items-center gap-2 text-slate-500">
                                 <RepeatIcon className="w-4 h-4" />
                                 {scheduleView !== 'TODAY' && (
@@ -142,7 +142,7 @@ const getTasksForDate = (schedule: ScheduleItem[], date: Date): ScheduleItem[] =
         const itemStartDate = new Date(item.startDate);
         itemStartDate.setHours(0, 0, 0, 0);
 
-        if (item.repeatFrequency === 'NONE') {
+        if (item.repeatFrequency === 'ONCE') {
             return itemStartDate.getTime() === checkDate.getTime();
         }
 

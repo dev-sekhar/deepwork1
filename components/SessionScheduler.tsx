@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ScheduleItem, ScheduleItemType, SessionStatus, DeepWorkSession, ShallowWorkTask } from '../types';
 import { getPreSessionRitual } from '../services/geminiService';
 import { SparklesIcon, CheckIcon } from './icons';
@@ -23,18 +23,38 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
       now.setMinutes(now.getMinutes() + 15); // Default to 15 mins from now
       return now.toTimeString().slice(0, 5);
   });
-  const [repeatFrequency, setRepeatFrequency] = useState<'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('NONE');
+  const [repeatFrequency, setRepeatFrequency] = useState<'ONCE' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('ONCE');
   const [repeatOn, setRepeatOn] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const debounceTimeoutRef = useRef<number | null>(null);
 
 
   const handleGetRitual = useCallback(async () => {
     if (!taskName) return;
     setIsFetchingRitual(true);
+    setRitual(null);
     const generatedRitual = await getPreSessionRitual(taskName);
     setRitual(generatedRitual);
     setIsFetchingRitual(false);
   }, [taskName]);
+
+  useEffect(() => {
+    if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+    }
+
+    if (itemType === ScheduleItemType.DEEP_WORK && taskName.trim().length > 3) {
+        debounceTimeoutRef.current = window.setTimeout(() => {
+            handleGetRitual();
+        }, 1000); // 1s debounce
+    }
+
+    return () => {
+        if (debounceTimeoutRef.current) {
+            clearTimeout(debounceTimeoutRef.current);
+        }
+    };
+}, [taskName, itemType, handleGetRitual]);
   
   const handleToggleRepeatDay = (dayIndex: number) => {
     setRepeatOn(prev => 
@@ -73,12 +93,12 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
         const itemDateOnly = new Date(itemStartDate.getFullYear(), itemStartDate.getMonth(), itemStartDate.getDate());
         const newItemDateOnly = new Date(newItemStart.getFullYear(), newItemStart.getMonth(), newItemStart.getDate());
         
-        if (item.repeatFrequency === 'NONE' && itemDateOnly.getTime() !== newItemDateOnly.getTime()) {
+        if (item.repeatFrequency === 'ONCE' && itemDateOnly.getTime() !== newItemDateOnly.getTime()) {
           return false;
         }
 
         switch (item.repeatFrequency) {
-            case 'NONE':
+            case 'ONCE':
                 return itemDateOnly.getTime() === newItemDateOnly.getTime();
             case 'DAILY':
                 return true;
@@ -165,6 +185,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
         setDuration(90); // Sensible default for deep work
     } else {
         setDuration(15); // Sensible default for shallow work
+        setRitual(null);
     }
   };
 
@@ -201,22 +222,17 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
         </div>
 
         {itemType === ScheduleItemType.DEEP_WORK && (
-            <div className="animate-fade-in space-y-6">
-                <div>
-                    <button
-                        type="button"
-                        onClick={handleGetRitual}
-                        disabled={!taskName || isFetchingRitual}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-300"
-                    >
-                        <SparklesIcon className="w-5 h-5" />
-                        {isFetchingRitual ? 'Generating...' : 'Get AI Pre-Session Ritual'}
-                    </button>
-                </div>
+            <div className="animate-fade-in space-y-4">
+                {isFetchingRitual && (
+                     <div className="p-4 bg-slate-700/50 rounded-lg flex items-center justify-center gap-2 text-slate-300 animate-fade-in">
+                        <SparklesIcon className="w-5 h-5 animate-spin" />
+                        <span>Generating AI Ritual...</span>
+                    </div>
+                )}
                 
-                {ritual && (
+                {ritual && !isFetchingRitual && (
                     <div className="p-4 bg-slate-700/50 rounded-lg space-y-2 animate-fade-in-up">
-                        <h4 className="font-semibold text-cyan-400">Your Ritual:</h4>
+                        <h4 className="font-semibold text-cyan-400">Your AI-Generated Ritual:</h4>
                         <ul className="list-none space-y-2">
                             {ritual.map((step, index) => (
                                 <li key={index} className="flex items-start gap-3 text-slate-300">
@@ -293,7 +309,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
         <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">Repeat</label>
             <div className="grid grid-cols-4 gap-2">
-                 {(['NONE', 'DAILY', 'WEEKLY', 'MONTHLY'] as const).map(freq => (
+                 {(['ONCE', 'DAILY', 'WEEKLY', 'MONTHLY'] as const).map(freq => (
                     <button
                         key={freq}
                         type="button"

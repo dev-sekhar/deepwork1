@@ -27,7 +27,7 @@ export interface BaseScheduleItem {
   taskName: string;
   durationMinutes: number;
   startDate: string; // ISO string for the start date and time
-  repeatFrequency: 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  repeatFrequency: 'ONCE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
   repeatOn: number[] | null; // e.g., [1, 3, 5] for Mon, Wed, Fri (0=Sun, 6=Sat)
 }
 
