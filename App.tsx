@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useMemo } from 'react';
 import { ScheduleItem, ScheduleItemType, SessionStatus, Feedback, DeepWorkSession } from './types';
 import { SessionScheduler } from './components/SessionScheduler';
@@ -8,7 +9,15 @@ import { TaskReviewModal } from './components/TaskReviewModal';
 import { PlusIcon } from './components/icons';
 
 type AppView = 'DASHBOARD' | 'SCHEDULING' | 'FOCUS' | 'PRE_SESSION_CHECKLIST';
-type ScheduleView = 'DAILY' | 'WEEKLY' | 'MONTHLY';
+type ScheduleView = 'TODAY' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
+
+const scheduleViewOptions: { name: string; value: ScheduleView }[] = [
+    { name: 'Today', value: 'TODAY' },
+    { name: 'Daily', value: 'DAILY' },
+    { name: 'Weekly', value: 'WEEKLY' },
+    { name: 'Monthly', value: 'MONTHLY' },
+];
+
 
 const Header = () => (
     <header className="p-4 text-center">
@@ -18,17 +27,72 @@ const Header = () => (
 );
 
 const RepeatIcon: React.FC<{className?: string}> = ({className}) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.664 0l3.181-3.183m-11.664 0l3.181-3.183a8.25 8.25 0 00-11.664 0l3.181 3.183" />
     </svg>
 );
+
+const getNextExecutionInfo = (item: ScheduleItem): string => {
+    const now = new Date();
+    const itemStartDate = new Date(item.startDate);
+    const itemTime = itemStartDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
+    const todayAtItemTime = new Date();
+    todayAtItemTime.setHours(itemStartDate.getHours(), itemStartDate.getMinutes(), 0, 0);
+
+    switch (item.repeatFrequency) {
+        case 'DAILY':
+            if (todayAtItemTime > now) {
+                return `Today at ${itemTime}`;
+            } else {
+                return `Tomorrow at ${itemTime}`;
+            }
+        case 'WEEKLY': {
+            const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const repeatOn = item.repeatOn?.sort((a, b) => a - b) || [];
+            if (repeatOn.length === 0) return '';
+            
+            const currentDay = now.getDay();
+
+            if (repeatOn.includes(currentDay) && todayAtItemTime > now) {
+                return `Today at ${itemTime}`;
+            }
+
+            const nextDayThisWeek = repeatOn.find(day => day > currentDay);
+            if (nextDayThisWeek !== undefined) {
+                return `${weekDays[nextDayThisWeek]} at ${itemTime}`;
+            }
+
+            return `${weekDays[repeatOn[0]]} at ${itemTime}`;
+        }
+        case 'MONTHLY': {
+            const dayOfMonth = itemStartDate.getDate();
+            const todayDate = now.getDate();
+            const currentMonthName = now.toLocaleString('default', { month: 'short' });
+            
+            const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, dayOfMonth);
+            const nextMonthName = nextMonthDate.toLocaleString('default', { month: 'short' });
+
+            if (dayOfMonth > todayDate) {
+                return `${currentMonthName} ${dayOfMonth} at ${itemTime}`;
+            } else if (dayOfMonth === todayDate && todayAtItemTime > now) {
+                return `Today at ${itemTime}`;
+            } else {
+                 return `${nextMonthName} ${dayOfMonth} at ${itemTime}`;
+            }
+        }
+        default:
+            return '';
+    }
+};
 
 
 const ScheduleListItem: React.FC<{
     item: ScheduleItem;
     onStart: (id: string) => void;
     onReview: (id: string) => void;
-}> = ({ item, onStart, onReview }) => {
+    scheduleView: ScheduleView;
+}> = ({ item, onStart, onReview, scheduleView }) => {
     const startTime = new Date(item.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
     return (
@@ -37,12 +101,19 @@ const ScheduleListItem: React.FC<{
                  <p className="text-lg font-mono text-cyan-400">{startTime}</p>
                  <div>
                     <h3 className="font-semibold text-lg text-white">{item.taskName}</h3>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-4 text-sm text-slate-400">
                         <span className={`text-xs font-bold px-2 py-1 rounded-full ${item.type === ScheduleItemType.DEEP_WORK ? 'text-cyan-400 bg-cyan-900/50' : 'text-indigo-400 bg-indigo-900/50'}`}>
                             {item.type === ScheduleItemType.DEEP_WORK ? 'DEEP' : 'SHALLOW'}
                         </span>
-                        <p className="text-sm text-slate-400">{item.durationMinutes} min</p>
-                        {item.repeatFrequency !== 'NONE' && <RepeatIcon className="w-4 h-4 text-slate-500" />}
+                        <p>{item.durationMinutes} min</p>
+                        {item.repeatFrequency !== 'NONE' && (
+                            <div className="flex items-center gap-2 text-slate-500">
+                                <RepeatIcon className="w-4 h-4" />
+                                {scheduleView !== 'TODAY' && (
+                                    <p className="text-sm">{getNextExecutionInfo(item)}</p>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -60,11 +131,49 @@ const ScheduleListItem: React.FC<{
     );
 };
 
+const getTasksForDate = (schedule: ScheduleItem[], date: Date): ScheduleItem[] => {
+    const checkDate = new Date(date);
+    checkDate.setHours(0, 0, 0, 0);
+
+    const dayOfWeek = checkDate.getDay();
+    const dayOfMonth = checkDate.getDate();
+    
+    const tasks = schedule.filter(item => {
+        const itemStartDate = new Date(item.startDate);
+        itemStartDate.setHours(0, 0, 0, 0);
+
+        if (item.repeatFrequency === 'NONE') {
+            return itemStartDate.getTime() === checkDate.getTime();
+        }
+
+        if (itemStartDate.getTime() > checkDate.getTime()) {
+            return false;
+        }
+
+        switch (item.repeatFrequency) {
+            case 'DAILY':
+                return true;
+            case 'WEEKLY':
+                return item.repeatOn?.includes(dayOfWeek) ?? false;
+            case 'MONTHLY':
+                return itemStartDate.getDate() === dayOfMonth;
+            default:
+                return false;
+        }
+    });
+
+    return tasks.sort((a, b) => {
+        const timeA = new Date(a.startDate).getHours() * 60 + new Date(a.startDate).getMinutes();
+        const timeB = new Date(b.startDate).getHours() * 60 + new Date(b.startDate).getMinutes();
+        return timeA - timeB;
+    });
+};
+
 
 const App: React.FC = () => {
   const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
   const [currentView, setCurrentView] = useState<AppView>('DASHBOARD');
-  const [scheduleView, setScheduleView] = useState<ScheduleView>('DAILY');
+  const [scheduleView, setScheduleView] = useState<ScheduleView>('TODAY');
   const [activeSession, setActiveSession] = useState<ScheduleItem | null>(null);
   const [sessionForFeedback, setSessionForFeedback] = useState<ScheduleItem | null>(null);
   const [taskForReview, setTaskForReview] = useState<ScheduleItem | null>(null);
@@ -128,49 +237,43 @@ const App: React.FC = () => {
       setCurrentView('DASHBOARD');
   }, []);
   
-  const dailySchedule = useMemo(() => {
-    if (scheduleView !== 'DAILY') return [];
-    
+  const todaysSchedule = useMemo(() => {
     const today = new Date();
-    const todayDayOfWeek = today.getDay();
+    return getTasksForDate(schedule, today);
+  }, [schedule]);
 
-    const filtered = schedule.filter(item => {
-        const itemStartDate = new Date(item.startDate);
-        const itemDateOnly = new Date(itemStartDate.getFullYear(), itemStartDate.getMonth(), itemStartDate.getDate());
-        const todayDateOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-        // Ignore tasks whose start date is in the future
-        if (itemDateOnly.getTime() > todayDateOnly.getTime()) {
-            return false;
-        }
-
-        switch (item.repeatFrequency) {
-            case 'NONE':
-                return itemDateOnly.getTime() === todayDateOnly.getTime();
-            case 'DAILY':
-                return true; // If start date is in the past or today, it occurs daily.
-            case 'WEEKLY':
-                return item.repeatOn?.includes(todayDayOfWeek) ?? false;
-            case 'MONTHLY':
-                return itemStartDate.getDate() === today.getDate();
-            default:
-                return false;
-        }
-    });
-
-    return filtered.sort((a, b) => {
+  const dailySchedule = useMemo(() => {
+    return schedule.filter(item => item.repeatFrequency === 'DAILY')
+      .sort((a, b) => {
         const timeA = new Date(a.startDate).getHours() * 60 + new Date(a.startDate).getMinutes();
         const timeB = new Date(b.startDate).getHours() * 60 + new Date(b.startDate).getMinutes();
         return timeA - timeB;
-    });
+      });
+  }, [schedule]);
 
-  }, [schedule, scheduleView]);
+  const weeklySchedule = useMemo(() => {
+    return schedule.filter(item => item.repeatFrequency === 'WEEKLY')
+      .sort((a, b) => {
+        const timeA = new Date(a.startDate).getHours() * 60 + new Date(a.startDate).getMinutes();
+        const timeB = new Date(b.startDate).getHours() * 60 + new Date(b.startDate).getMinutes();
+        return timeA - timeB;
+      });
+  }, [schedule]);
+
+  const monthlySchedule = useMemo(() => {
+    return schedule.filter(item => item.repeatFrequency === 'MONTHLY')
+      .sort((a, b) => {
+        const timeA = new Date(a.startDate).getHours() * 60 + new Date(a.startDate).getMinutes();
+        const timeB = new Date(b.startDate).getHours() * 60 + new Date(b.startDate).getMinutes();
+        return timeA - timeB;
+      });
+  }, [schedule]);
 
 
   const renderView = () => {
     switch (currentView) {
       case 'SCHEDULING':
-        return <SessionScheduler onAddItem={handleAddItem} onCancel={() => setCurrentView('DASHBOARD')} />;
+        return <SessionScheduler onAddItem={handleAddItem} onCancel={() => setCurrentView('DASHBOARD')} schedule={schedule} />;
       case 'PRE_SESSION_CHECKLIST':
         return activeSession && activeSession.type === ScheduleItemType.DEEP_WORK ? <PreSessionChecklist session={activeSession} onUpdateSession={handleUpdateActiveSession} onStartFocus={handleChecklistComplete} onBack={handleBackToDashboard} /> : null;
       case 'FOCUS':
@@ -187,29 +290,63 @@ const App: React.FC = () => {
               Schedule New Item
             </button>
             
-            <div className="grid grid-cols-3 gap-2 p-1 bg-slate-800 rounded-lg">
-                {(['DAILY', 'WEEKLY', 'MONTHLY'] as ScheduleView[]).map(view => (
-                    <button key={view} onClick={() => setScheduleView(view)} className={`px-3 py-2 rounded-md text-sm font-semibold transition capitalize ${scheduleView === view ? 'bg-cyan-500 text-slate-900' : 'bg-transparent hover:bg-slate-700'}`}>
-                        {view.toLowerCase()}
+            <div className="grid grid-cols-4 gap-2 p-1 bg-slate-800 rounded-lg">
+                {scheduleViewOptions.map(({name, value}) => (
+                    <button key={value} onClick={() => setScheduleView(value)} className={`px-3 py-2 rounded-md text-sm font-semibold transition capitalize ${scheduleView === value ? 'bg-cyan-500 text-slate-900' : 'bg-transparent hover:bg-slate-700'}`}>
+                        {name}
                     </button>
                 ))}
             </div>
 
             <div className="space-y-4">
-                {scheduleView === 'DAILY' && (
+                {scheduleView === 'TODAY' && (
                     <>
                         <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">Today's Plan</h2>
-                        {dailySchedule.length === 0 ? (
+                        {todaysSchedule.length === 0 ? (
                             <p className="text-center text-slate-400 py-8">No items scheduled for today.</p>
                         ) : (
-                            dailySchedule.map(item => (
-                                <ScheduleListItem key={item.id} item={item} onStart={handleStartSession} onReview={handleReviewTask} />
+                            todaysSchedule.map(item => (
+                                <ScheduleListItem key={item.id} item={item} onStart={handleStartSession} onReview={handleReviewTask} scheduleView={scheduleView} />
                             ))
                         )}
                     </>
                 )}
-                 {scheduleView === 'WEEKLY' && <p className="text-center text-slate-400 py-8">Weekly view coming soon.</p>}
-                 {scheduleView === 'MONTHLY' && <p className="text-center text-slate-400 py-8">Monthly view coming soon.</p>}
+                 {scheduleView === 'DAILY' && (
+                    <>
+                        <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">Daily Tasks</h2>
+                        {dailySchedule.length === 0 ? (
+                            <p className="text-center text-slate-400 py-8">No daily tasks scheduled.</p>
+                        ) : (
+                            dailySchedule.map(item => (
+                                <ScheduleListItem key={item.id} item={item} onStart={handleStartSession} onReview={handleReviewTask} scheduleView={scheduleView} />
+                            ))
+                        )}
+                    </>
+                 )}
+                 {scheduleView === 'WEEKLY' && (
+                    <>
+                        <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">Weekly Tasks</h2>
+                         {weeklySchedule.length === 0 ? (
+                            <p className="text-center text-slate-400 py-8">No weekly tasks scheduled.</p>
+                        ) : (
+                            weeklySchedule.map(item => (
+                                <ScheduleListItem key={item.id} item={item} onStart={handleStartSession} onReview={handleReviewTask} scheduleView={scheduleView} />
+                            ))
+                        )}
+                    </>
+                 )}
+                 {scheduleView === 'MONTHLY' && 
+                    <>
+                        <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">Monthly Tasks</h2>
+                        {monthlySchedule.length === 0 ? (
+                            <p className="text-center text-slate-400 py-8">No monthly tasks scheduled.</p>
+                        ) : (
+                            monthlySchedule.map(item => (
+                                <ScheduleListItem key={item.id} item={item} onStart={handleStartSession} onReview={handleReviewTask} scheduleView={scheduleView} />
+                            ))
+                        )}
+                    </>
+                 }
             </div>
           </div>
         );

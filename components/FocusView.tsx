@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { DeepWorkSession, ShallowWorkTask } from '../types';
 import { useTimer } from '../hooks/useTimer';
 import { PlayIcon, PauseIcon, StopIcon } from './icons';
@@ -10,6 +10,7 @@ interface FocusViewProps {
 }
 
 export const FocusView: React.FC<FocusViewProps> = ({ session, onComplete, onBack }) => {
+  const [wasStarted, setWasStarted] = useState(false);
   const { secondsLeft, isActive, start, pause } = useTimer(session.durationMinutes * 60);
 
   useEffect(() => {
@@ -17,6 +18,13 @@ export const FocusView: React.FC<FocusViewProps> = ({ session, onComplete, onBac
       onComplete();
     }
   }, [secondsLeft, onComplete]);
+
+  const handleStartClick = () => {
+    if (!wasStarted) {
+      setWasStarted(true);
+    }
+    start();
+  };
 
   const minutes = Math.floor(secondsLeft / 60);
   const seconds = secondsLeft % 60;
@@ -41,14 +49,19 @@ export const FocusView: React.FC<FocusViewProps> = ({ session, onComplete, onBac
         <div className="flex justify-center items-center gap-6">
           <button
             onClick={onComplete}
-            className="p-4 bg-red-600/20 text-red-400 rounded-full hover:bg-red-600/40 hover:text-red-300 transition-all duration-300"
+            disabled={!wasStarted}
+            className={`p-4 rounded-full transition-all duration-300 ${
+              !wasStarted 
+              ? 'bg-slate-700 text-slate-500 cursor-not-allowed' 
+              : 'bg-red-600/20 text-red-400 hover:bg-red-600/40 hover:text-red-300'
+            }`}
             aria-label="Stop Session"
           >
             <StopIcon className="w-8 h-8" />
           </button>
 
           <button
-            onClick={isActive ? pause : start}
+            onClick={isActive ? pause : handleStartClick}
             className="p-6 bg-cyan-500 text-slate-900 rounded-full hover:bg-cyan-400 shadow-lg shadow-cyan-500/20 transform hover:scale-105 transition-all duration-300"
             aria-label={isActive ? 'Pause' : 'Start'}
           >

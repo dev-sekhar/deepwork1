@@ -6,11 +6,12 @@ import { SparklesIcon, CheckIcon } from './icons';
 interface SessionSchedulerProps {
   onAddItem: (item: ScheduleItem) => void;
   onCancel: () => void;
+  schedule: ScheduleItem[];
 }
 
 const WEEK_DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, onCancel }) => {
+export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, onCancel, schedule }) => {
   const [taskName, setTaskName] = useState('');
   const [duration, setDuration] = useState(90); // Default to a valid deep work duration
   const [ritual, setRitual] = useState<string[] | null>(null);
@@ -24,6 +25,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
   });
   const [repeatFrequency, setRepeatFrequency] = useState<'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('NONE');
   const [repeatOn, setRepeatOn] = useState<number[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
 
   const handleGetRitual = useCallback(async () => {
@@ -44,9 +46,87 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     if (!taskName || duration < 1) return;
+    
+    const newItemStart = new Date(`${startDate}T${startTime}`);
 
-    const fullStartDate = new Date(`${startDate}T${startTime}`).toISOString();
+    if (newItemStart < new Date()) {
+        setError("Cannot schedule tasks in the past. Please select a future date and time.");
+        return;
+    }
+    
+    const newItemEnd = new Date(newItemStart.getTime() + duration * 60 * 1000);
+
+    // --- Conflict validation and suggestion logic ---
+    const dayOfWeek = newItemStart.getDay();
+
+    const getEffectiveStartTime = (item: ScheduleItem, date: Date): Date => {
+      const itemTime = new Date(item.startDate);
+      const effectiveDate = new Date(date);
+      effectiveDate.setHours(itemTime.getHours(), itemTime.getMinutes(), itemTime.getSeconds(), itemTime.getMilliseconds());
+      return effectiveDate;
+    };
+    
+    const tasksOnSameDay = schedule.filter(item => {
+        const itemStartDate = new Date(item.startDate);
+        const itemDateOnly = new Date(itemStartDate.getFullYear(), itemStartDate.getMonth(), itemStartDate.getDate());
+        const newItemDateOnly = new Date(newItemStart.getFullYear(), newItemStart.getMonth(), newItemStart.getDate());
+        
+        if (item.repeatFrequency === 'NONE' && itemDateOnly.getTime() !== newItemDateOnly.getTime()) {
+          return false;
+        }
+
+        switch (item.repeatFrequency) {
+            case 'NONE':
+                return itemDateOnly.getTime() === newItemDateOnly.getTime();
+            case 'DAILY':
+                return true;
+            case 'WEEKLY':
+                return item.repeatOn?.includes(dayOfWeek) ?? false;
+            case 'MONTHLY':
+                return itemStartDate.getDate() === newItemStart.getDate();
+            default:
+                return false;
+        }
+    }).map(item => {
+        const start = getEffectiveStartTime(item, newItemStart);
+        const end = new Date(start.getTime() + item.durationMinutes * 60000);
+        return { ...item, effectiveStart: start, effectiveEnd: end };
+    }).sort((a, b) => a.effectiveStart.getTime() - b.effectiveStart.getTime());
+
+    let initialConflict: { taskName: string; effectiveEnd: Date } | null = null;
+    for (const existingTask of tasksOnSameDay) {
+        if (newItemStart < existingTask.effectiveEnd && newItemEnd > existingTask.effectiveStart) {
+            initialConflict = { taskName: existingTask.taskName, effectiveEnd: existingTask.effectiveEnd };
+            break;
+        }
+    }
+
+    if (initialConflict) {
+        let proposedStart = initialConflict.effectiveEnd;
+        let slotFound = false;
+
+        while (!slotFound) {
+            const proposedEnd = new Date(proposedStart.getTime() + duration * 60000);
+            const conflictingTask = tasksOnSameDay.find(task => 
+                proposedStart < task.effectiveEnd && proposedEnd > task.effectiveStart
+            );
+
+            if (conflictingTask) {
+                proposedStart = conflictingTask.effectiveEnd;
+            } else {
+                slotFound = true;
+            }
+        }
+        
+        const suggestionTime = proposedStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+        setError(`Time conflict with "${initialConflict.taskName}". Next available slot is at ${suggestionTime}.`);
+        return;
+    }
+    // --- End of validation ---
+
+    const fullStartDate = newItemStart.toISOString();
 
     const baseItemData = {
         id: new Date().toISOString() + Math.random(),
@@ -194,6 +274,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                     type="date"
                     value={startDate}
                     onChange={e => setStartDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
                     className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500"
                  />
             </div>
@@ -245,6 +326,11 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
             </div>
         )}
 
+        {error && (
+            <div className="p-3 bg-red-500/20 text-red-400 text-sm rounded-md text-center animate-fade-in">
+                {error}
+            </div>
+        )}
 
         <div className="flex justify-end gap-4 pt-4">
           <button
