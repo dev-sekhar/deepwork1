@@ -1,4 +1,5 @@
 
+
 import React, { useEffect, useState } from 'react';
 import { ScheduleItem, ScheduleItemType, DeepWorkSession } from '../types';
 import { useTimer } from '../hooks/useTimer';
@@ -10,9 +11,26 @@ interface FocusViewProps {
   onBack: () => void;
 }
 
+const typeStyles: { [key in ScheduleItemType]?: { textColor: string; buttonBg: string; buttonHoverBg: string; buttonShadow: string; } } = {
+    [ScheduleItemType.DEEP_WORK]: {
+        textColor: 'text-green-400',
+        buttonBg: 'bg-green-500',
+        buttonHoverBg: 'hover:bg-green-400',
+        buttonShadow: 'shadow-green-500/20',
+    },
+    [ScheduleItemType.SHALLOW_WORK]: {
+        textColor: 'text-orange-400',
+        buttonBg: 'bg-orange-500',
+        buttonHoverBg: 'hover:bg-orange-400',
+        buttonShadow: 'shadow-orange-500/20',
+    },
+};
+
 export const FocusView: React.FC<FocusViewProps> = ({ session, onComplete, onBack }) => {
   const [wasStarted, setWasStarted] = useState(false);
   const { secondsLeft, isActive, start, pause } = useTimer(session.durationMinutes * 60);
+  
+  const styles = typeStyles[session.type] || typeStyles[ScheduleItemType.SHALLOW_WORK]!;
 
   useEffect(() => {
     if (secondsLeft === 0 && wasStarted) {
@@ -39,7 +57,7 @@ export const FocusView: React.FC<FocusViewProps> = ({ session, onComplete, onBac
         <div className="flex flex-col gap-6 sm:gap-8">
             <div className="flex flex-col text-center w-full">
                 <h2 className="text-xl sm:text-2xl text-slate-400 mb-2 mt-8 sm:mt-0">Focusing on:</h2>
-                <h1 className="text-3xl sm:text-4xl font-bold text-cyan-400 mb-2 truncate" title={session.taskName}>
+                <h1 className={`text-3xl sm:text-4xl font-bold ${styles.textColor} mb-2 truncate`} title={session.taskName}>
                   {session.taskName}
                 </h1>
                 {session.type === ScheduleItemType.DEEP_WORK && (
@@ -70,7 +88,7 @@ export const FocusView: React.FC<FocusViewProps> = ({ session, onComplete, onBac
 
                   <button
                     onClick={isActive ? pause : handleStartClick}
-                    className="p-6 bg-cyan-500 text-slate-900 rounded-full hover:bg-cyan-400 shadow-lg shadow-cyan-500/20 transform hover:scale-105 transition-all duration-300"
+                    className={`p-6 ${styles.buttonBg} text-slate-900 rounded-full ${styles.buttonHoverBg} shadow-lg ${styles.buttonShadow} transform hover:scale-105 transition-all duration-300`}
                     aria-label={isActive ? 'Pause' : 'Start'}
                   >
                     {isActive ? <PauseIcon className="w-12 h-12" /> : <PlayIcon className="w-12 h-12" />}

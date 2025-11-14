@@ -1,4 +1,6 @@
 
+
+
 import React from 'react';
 import { ScheduleItem, ScheduleItemType, DeepWorkSession } from '../types';
 
@@ -25,21 +27,39 @@ const moods = {
     tired: { emoji: '😴', label: 'Tired' },
 };
 
+const getTypeStyles = (type: ScheduleItemType) => {
+    switch (type) {
+        case ScheduleItemType.DEEP_WORK:
+            return 'text-green-400 bg-green-900/50';
+        case ScheduleItemType.SHALLOW_WORK:
+            return 'text-orange-400 bg-orange-900/50';
+        case ScheduleItemType.AI_ASSISTED_WORK:
+            return 'text-violet-400 bg-violet-900/50';
+        default:
+            return 'text-slate-400 bg-slate-700';
+    }
+};
+
 export const TaskReviewModal: React.FC<TaskReviewModalProps> = ({ item, onClose }) => {
   if (!item.feedback) return null;
+
+  const typeStyleClasses = getTypeStyles(item.type);
+  const textColorClass = typeStyleClasses.split(' ').find(c => c.startsWith('text-'));
+
+  const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString();
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50 animate-fade-in" onClick={onClose}>
       <div className="bg-slate-800 rounded-lg shadow-xl p-8 w-full max-w-md space-y-6 transform animate-fade-in-up" onClick={e => e.stopPropagation()}>
         <div className="text-center">
             <h2 className="text-2xl font-bold text-cyan-400">Session Review</h2>
-            <p className="text-slate-400 mt-1 truncate">"{item.taskName}"</p>
+            <h3 className={`text-xl font-bold ${textColorClass} mt-1 truncate`} title={item.taskName}>{item.taskName}</h3>
         </div>
 
-        <div className="space-y-4 text-sm">
+        <div className="space-y-4 text-sm max-h-[60vh] overflow-y-auto pr-2">
             <div className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg">
                 <span className="font-medium text-slate-300">Type</span>
-                 <span className={`text-xs font-bold px-2 py-1 rounded-full ${item.type === ScheduleItemType.DEEP_WORK ? 'text-cyan-400 bg-cyan-900/50' : 'text-indigo-400 bg-indigo-900/50'}`}>
+                 <span className={`text-xs font-bold px-2 py-1 rounded-full ${getTypeStyles(item.type)}`}>
                     {item.type.replace('_', ' ')}
                  </span>
             </div>
@@ -70,6 +90,21 @@ export const TaskReviewModal: React.FC<TaskReviewModalProps> = ({ item, onClose 
                 <div className="p-3 bg-slate-700/50 rounded-lg">
                     <p className="font-medium text-slate-300 mb-1">Interruptions</p>
                     <p className="text-white italic bg-slate-900/50 p-2 rounded">"{item.feedback.interruptions}"</p>
+                </div>
+            )}
+            {item.pauses && item.pauses.length > 0 && (
+                <div className="p-3 bg-slate-700/50 rounded-lg">
+                    <p className="font-medium text-slate-300 mb-2">Pause History</p>
+                    <div className="space-y-2">
+                        {item.pauses.map((pause, index) => (
+                            <div key={index} className="bg-slate-900/50 p-2 rounded">
+                                <p className="font-semibold text-blue-300">
+                                    {formatDate(pause.startDate)} - {formatDate(pause.endDate)}
+                                </p>
+                                {pause.reason && <p className="text-slate-300 italic text-xs">Reason: {pause.reason}</p>}
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
         </div>

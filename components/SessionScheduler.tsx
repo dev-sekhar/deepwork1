@@ -1,7 +1,6 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ScheduleItem, ScheduleItemType, SessionStatus, DeepWorkSession, ShallowWorkTask, GoalAnalysisResult } from '../types';
-import { getPreSessionRitual, evaluateSMARTGoal, getSuggestedDuration } from '../services/geminiService';
+import { getPreSessionRitual, evaluateSMARTGoal, getSuggestedDuration, RateLimitError } from '../services/geminiService';
 import { SparklesIcon, CheckIcon } from './icons';
 
 interface SessionSchedulerProps {
@@ -20,6 +19,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
   const [isFetchingRitual, setIsFetchingRitual] = useState(false);
   const [itemType, setItemType] = useState<ScheduleItemType>(ScheduleItemType.DEEP_WORK);
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState('');
   const [startTime, setStartTime] = useState(() => {
       const now = new Date();
       now.setMinutes(now.getMinutes() + 15); // Default to 15 mins from now
@@ -32,12 +32,22 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
   const [goalAnalysis, setGoalAnalysis] = useState<GoalAnalysisResult | null>(null);
   const [isFetchingDuration, setIsFetchingDuration] = useState(false);
   const [suggestedDuration, setSuggestedDuration] = useState<number | null>(null);
+  const [aiMode, setAiMode] = useState<'ENABLED' | 'MINUTE_LIMITED' | 'DAY_LIMITED' | 'DISABLED'>('ENABLED');
+  const [aiNotification, setAiNotification] = useState<string | null>(null);
+  const [rateLimitResetTime, setRateLimitResetTime] = useState<Date | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
+
 
   const debounceTimeoutRef = useRef<number | null>(null);
 
+  const handleModelSwitch = useCallback((modelName: string) => {
+    setAiNotification(`Switching to fallback model (${modelName})...`);
+    setTimeout(() => setAiNotification(null), 4000);
+  }, []);
 
-  const handleAIAssistance = useCallback(async () => {
-    if (!taskName || !goal) return;
+  const fetchAIAssistance = useCallback(async () => {
+    if (!taskName || !goal || aiMode !== 'ENABLED' || itemType !== ScheduleItemType.DEEP_WORK) return;
+
     setIsFetchingRitual(true);
     setIsAnalyzingGoal(true);
     setIsFetchingDuration(true);
@@ -45,39 +55,76 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
     setGoalAnalysis(null);
     setSuggestedDuration(null);
 
-    // Fetch ritual, analyze goal, and get duration in parallel
-    const [generatedRitual, analysisResult, durationSuggestion] = await Promise.all([
-        getPreSessionRitual(taskName, goal),
-        evaluateSMARTGoal(taskName, goal),
-        getSuggestedDuration(taskName, goal)
-    ]);
+    try {
+      const [generatedRitual, analysisResult, durationSuggestion] = await Promise.all([
+        getPreSessionRitual(taskName, goal, handleModelSwitch),
+        evaluateSMARTGoal(taskName, goal, handleModelSwitch),
+        getSuggestedDuration(taskName, goal, handleModelSwitch),
+      ]);
 
-    setRitual(generatedRitual);
-    setGoalAnalysis(analysisResult);
-    setSuggestedDuration(durationSuggestion);
-    setIsFetchingRitual(false);
-    setIsAnalyzingGoal(false);
-    setIsFetchingDuration(false);
-  }, [taskName, goal]);
-
+      setRitual(generatedRitual);
+      setGoalAnalysis(analysisResult);
+      setSuggestedDuration(durationSuggestion);
+    } catch (error: any) {
+      console.error("AI Assistance Error:", error);
+      if (error instanceof RateLimitError) {
+        if (error.limitType === 'DAY') {
+          setAiMode('DAY_LIMITED');
+        } else { // MINUTE
+          setAiMode('MINUTE_LIMITED');
+          setRateLimitResetTime(new Date(Date.now() + 60 * 1000));
+        }
+      } else {
+        setAiMode('DISABLED');
+      }
+      setAiNotification(null);
+    } finally {
+      setIsFetchingRitual(false);
+      setIsAnalyzingGoal(false);
+      setIsFetchingDuration(false);
+    }
+  }, [taskName, goal, aiMode, itemType, handleModelSwitch]);
 
   useEffect(() => {
-    if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-    }
-
-    if (itemType === ScheduleItemType.DEEP_WORK && taskName.trim().length > 3 && goal.trim().length > 3) {
-        debounceTimeoutRef.current = window.setTimeout(() => {
-            handleAIAssistance();
-        }, 1200); // 1.2s debounce
+    if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
+    
+    const hasInput = taskName.trim().length > 3 && goal.trim().length > 10;
+    
+    if (hasInput && aiMode === 'ENABLED' && itemType === ScheduleItemType.DEEP_WORK) {
+      debounceTimeoutRef.current = window.setTimeout(() => {
+        fetchAIAssistance();
+      }, 800);
     }
 
     return () => {
-        if (debounceTimeoutRef.current) {
-            clearTimeout(debounceTimeoutRef.current);
-        }
+      if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
     };
-}, [taskName, goal, itemType, handleAIAssistance]);
+  }, [taskName, goal, aiMode, itemType, fetchAIAssistance]);
+
+  useEffect(() => {
+    if (aiMode !== 'MINUTE_LIMITED' || !rateLimitResetTime) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      const secondsLeft = Math.ceil((rateLimitResetTime.getTime() - Date.now()) / 1000);
+      if (secondsLeft > 0) {
+        setCountdown(secondsLeft);
+      } else {
+        setCountdown(null);
+        setRateLimitResetTime(null);
+        setAiMode('ENABLED');
+        clearInterval(intervalId);
+      }
+    }, 1000);
+
+    // Initial countdown value
+    setCountdown(Math.ceil((rateLimitResetTime.getTime() - Date.now()) / 1000));
+
+
+    return () => clearInterval(intervalId);
+  }, [aiMode, rateLimitResetTime]);
+
   
   const handleToggleRepeatDay = (dayIndex: number) => {
     setRepeatOn(prev => 
@@ -100,6 +147,11 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
 
     if (newItemStart < new Date()) {
         setError("Cannot schedule tasks in the past. Please select a future date and time.");
+        return;
+    }
+    
+    if (endDate && new Date(endDate) < newItemStart) {
+        setError("End date cannot be before the start date.");
         return;
     }
     
@@ -180,10 +232,13 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
         taskName,
         durationMinutes: duration,
         startDate: fullStartDate,
+        endDate: repeatFrequency !== 'ONCE' && endDate ? new Date(endDate).toISOString() : null,
         repeatFrequency,
         repeatOn: repeatFrequency === 'WEEKLY' ? repeatOn.sort((a,b) => a-b) : null,
         status: SessionStatus.PENDING,
         feedback: null,
+        isCancelled: false,
+        pauses: [],
     };
 
     if (itemType === ScheduleItemType.DEEP_WORK) {
@@ -217,18 +272,22 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
     }
   };
 
-
   return (
     <div className="p-6 bg-slate-800 rounded-lg shadow-lg w-full max-w-md mx-auto animate-fade-in-up">
+      {aiNotification && (
+          <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-blue-500/80 backdrop-blur-sm text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg animate-fade-in-down z-50">
+              {aiNotification}
+          </div>
+      )}
       <h2 className="text-2xl font-bold text-cyan-400 mb-6">Schedule New Item</h2>
       <form onSubmit={handleSubmit} className="space-y-6">
 
         <div>
             <div className="grid grid-cols-2 gap-2 p-1 bg-slate-700 rounded-lg mb-6">
-                <button type="button" onClick={() => handleItemTypeChange(ScheduleItemType.DEEP_WORK)} className={`px-3 py-2 rounded-md text-sm font-semibold transition ${itemType === ScheduleItemType.DEEP_WORK ? 'bg-cyan-500 text-slate-900' : 'bg-transparent hover:bg-slate-600/50'}`}>
+                <button type="button" onClick={() => handleItemTypeChange(ScheduleItemType.DEEP_WORK)} className={`px-3 py-2 rounded-md text-sm font-semibold transition ${itemType === ScheduleItemType.DEEP_WORK ? 'bg-green-500 text-slate-900' : 'bg-transparent hover:bg-slate-600/50'}`}>
                     Deep Work
                 </button>
-                 <button type="button" onClick={() => handleItemTypeChange(ScheduleItemType.SHALLOW_WORK)} className={`px-3 py-2 rounded-md text-sm font-semibold transition ${itemType === ScheduleItemType.SHALLOW_WORK ? 'bg-indigo-500 text-slate-900' : 'bg-transparent hover:bg-slate-600/50'}`}>
+                 <button type="button" onClick={() => handleItemTypeChange(ScheduleItemType.SHALLOW_WORK)} className={`px-3 py-2 rounded-md text-sm font-semibold transition ${itemType === ScheduleItemType.SHALLOW_WORK ? 'bg-orange-500 text-white' : 'bg-transparent hover:bg-slate-600/50'}`}>
                     Shallow Work
                 </button>
             </div>
@@ -247,13 +306,13 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                 itemType === ScheduleItemType.DEEP_WORK ? "e.g., Write chapter 3 of novel" 
                 : "e.g., Reply to team emails"
             }
-            className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition"
+            className={`w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2  transition ${itemType === ScheduleItemType.DEEP_WORK ? 'focus:ring-green-500 focus:border-green-500' : 'focus:ring-orange-500 focus:border-orange-500'}`}
             required
           />
         </div>
         
         {itemType === ScheduleItemType.DEEP_WORK && (
-          <div className="animate-fade-in space-y-3">
+          <div className="animate-fade-in space-y-4">
             <div>
               <label htmlFor="goal" className="block text-sm font-medium text-slate-300 mb-2">
                 Task Goal
@@ -263,16 +322,26 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                 value={goal}
                 onChange={(e) => setGoal(e.target.value)}
                 placeholder="e.g., Complete a full draft of the introduction and first two paragraphs."
-                className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition"
+                className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition"
                 rows={2}
                 required
               />
             </div>
 
-            {isAnalyzingGoal && (
-                <div className="p-3 bg-slate-700/50 rounded-lg flex items-center justify-center gap-2 text-slate-300 text-sm animate-fade-in">
-                    <SparklesIcon className="w-4 h-4 animate-spin" />
-                    <span>Analyzing goal...</span>
+            {aiMode === 'MINUTE_LIMITED' && (
+                <div className="p-3 bg-yellow-500/20 text-yellow-300 text-sm rounded-md text-center animate-fade-in">
+                    AI features are rate-limited.
+                    {countdown !== null ? ` Please try again in ${countdown}s.` : ' Retrying soon.'}
+                </div>
+            )}
+            {aiMode === 'DAY_LIMITED' && (
+                <div className="p-3 bg-orange-500/20 text-orange-300 text-sm rounded-md text-center animate-fade-in">
+                    You've reached the daily limit for AI features. Please try again tomorrow.
+                </div>
+            )}
+            {aiMode === 'DISABLED' && (
+                <div className="p-3 bg-red-500/20 text-red-400 text-sm rounded-md text-center animate-fade-in">
+                    AI suggestions are temporarily unavailable.
                 </div>
             )}
 
@@ -300,28 +369,19 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
           </div>
         )}
 
-        {itemType === ScheduleItemType.DEEP_WORK && (
-            <div className="animate-fade-in space-y-4">
-                {isFetchingRitual && (
-                     <div className="p-4 bg-slate-700/50 rounded-lg flex items-center justify-center gap-2 text-slate-300 animate-fade-in">
-                        <SparklesIcon className="w-5 h-5 animate-spin" />
-                        <span>Generating AI Ritual...</span>
-                    </div>
-                )}
-                
-                {ritual && !isFetchingRitual && (
-                    <div className="p-4 bg-slate-700/50 rounded-lg space-y-2 animate-fade-in-up">
-                        <h4 className="font-semibold text-cyan-400">Your AI-Generated Ritual:</h4>
-                        <ul className="list-none space-y-2">
-                            {ritual.map((step, index) => (
-                                <li key={index} className="flex items-start gap-3 text-slate-300">
-                                <CheckIcon className="w-5 h-5 text-green-400 mt-1 flex-shrink-0" />
-                                <span>{step}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
+        {itemType === ScheduleItemType.DEEP_WORK && ritual && !isFetchingRitual && (
+            <div className="animate-fade-in-up space-y-4">
+                <div className="p-4 bg-slate-700/50 rounded-lg space-y-2">
+                    <h4 className="font-semibold text-green-400">Your AI-Generated Ritual:</h4>
+                    <ul className="list-none space-y-2">
+                        {ritual.map((step, index) => (
+                            <li key={index} className="flex items-start gap-3 text-slate-300">
+                            <CheckIcon className="w-5 h-5 text-green-400 mt-1 flex-shrink-0" />
+                            <span>{step}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
             </div>
         )}
 
@@ -329,8 +389,8 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
             Duration (minutes)
-            {isFetchingDuration && (
-                <SparklesIcon className="w-4 h-4 text-cyan-400 animate-spin" />
+            {isFetchingDuration && itemType === ScheduleItemType.DEEP_WORK && (
+                <SparklesIcon className="w-4 h-4 text-green-400 animate-spin" />
             )}
           </label>
           {itemType === ScheduleItemType.DEEP_WORK ? (
@@ -342,7 +402,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                       type="button"
                       onClick={() => setDuration(d)}
                       className={`px-3 py-2 rounded-md text-sm font-semibold transition ${
-                        duration === d ? 'bg-cyan-500 text-slate-900' : 'bg-slate-700 hover:bg-slate-600'
+                        duration === d ? 'bg-green-500 text-slate-900' : 'bg-slate-700 hover:bg-slate-600'
                       }`}
                     >
                       {d} min
@@ -352,12 +412,12 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                  {suggestedDuration && !isFetchingDuration && (
                     <div className="p-2 bg-slate-700/50 rounded-lg text-center text-sm animate-fade-in-up">
                       <span className="text-slate-300">
-                        ✨ AI Suggestion: <strong className="text-cyan-400">{suggestedDuration} min</strong>
+                        ✨ AI Suggestion: <strong className="text-green-400">{suggestedDuration} min</strong>
                       </span>
                       <button
                         type="button"
                         onClick={() => setDuration(suggestedDuration)}
-                        className="ml-3 text-xs bg-cyan-600/50 hover:bg-cyan-600/80 text-white font-semibold px-3 py-1 rounded-md"
+                        className="ml-3 text-xs bg-green-600/50 hover:bg-green-600/80 text-white font-semibold px-3 py-1 rounded-md"
                       >
                         Apply
                       </button>
@@ -373,7 +433,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                     onChange={(e) => setDuration(parseInt(e.target.value, 10) || 0)}
                     placeholder="e.g., 15"
                     min="1"
-                    className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition"
+                    className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition"
                     required
                 />
             </div>
@@ -413,7 +473,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                         type="button"
                         onClick={() => setRepeatFrequency(freq)}
                         className={`px-3 py-2 rounded-md text-sm font-semibold transition capitalize ${
-                            repeatFrequency === freq ? 'bg-cyan-500 text-slate-900' : 'bg-slate-700 hover:bg-slate-600'
+                            repeatFrequency === freq ? 'bg-cyan-500 text-slate-900' : 'bg-transparent hover:bg-slate-700'
                         }`}
                     >
                         {freq.toLowerCase()}
@@ -437,6 +497,20 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                         >{day}</button>
                     ))}
                 </div>
+            </div>
+        )}
+        
+        {repeatFrequency !== 'ONCE' && (
+             <div className="animate-fade-in">
+                 <label htmlFor="endDate" className="block text-sm font-medium text-slate-300 mb-2">End Date (optional)</label>
+                 <input
+                    id="endDate"
+                    type="date"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                    min={startDate}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500"
+                 />
             </div>
         )}
 
