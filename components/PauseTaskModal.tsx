@@ -37,7 +37,7 @@ export const PauseTaskModal: React.FC<PauseTaskModalProps> = ({ taskName, onSubm
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50 animate-fade-in">
       <div className="bg-slate-800 rounded-lg shadow-xl p-8 w-full max-w-md space-y-6 transform animate-fade-in-up">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-cyan-400">Pause Task</h2>
+          <h2 className="text-2xl font-bold text-primary-accent">Pause Task</h2>
           <p className="text-slate-400 mt-1">Temporarily pause "{taskName}"</p>
         </div>
 
@@ -50,7 +50,7 @@ export const PauseTaskModal: React.FC<PauseTaskModalProps> = ({ taskName, onSubm
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
               min={toLocalYYYYMMDD(new Date())}
-              className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500"
+              className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-primary-accent"
               required
             />
           </div>
@@ -62,7 +62,7 @@ export const PauseTaskModal: React.FC<PauseTaskModalProps> = ({ taskName, onSubm
               value={endDate}
               onChange={e => setEndDate(e.target.value)}
               min={startDate}
-              className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500"
+              className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-primary-accent"
               required
             />
           </div>
@@ -76,7 +76,7 @@ export const PauseTaskModal: React.FC<PauseTaskModalProps> = ({ taskName, onSubm
             onChange={e => setReason(e.target.value)}
             rows={2}
             placeholder="e.g., Vacation, project on hold"
-            className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500"
+            className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-primary-accent"
           />
         </div>
 
@@ -97,7 +97,7 @@ export const PauseTaskModal: React.FC<PauseTaskModalProps> = ({ taskName, onSubm
           <button
             type="button"
             onClick={handleSubmit}
-            className="px-6 py-2 bg-cyan-600 text-white font-semibold rounded-md hover:bg-cyan-700 transition"
+            className="px-6 py-2 bg-primary text-white font-semibold rounded-md hover:bg-primary-focus transition"
           >
             Pause Task
           </button>

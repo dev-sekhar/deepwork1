@@ -27,7 +27,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ sessionName, onSub
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50 animate-fade-in">
       <div className="bg-slate-800 rounded-lg shadow-xl p-8 w-full max-w-md space-y-6 transform animate-fade-in-up">
         <div className="text-center">
-            <h2 className="text-2xl font-bold text-cyan-400">Session Complete!</h2>
+            <h2 className="text-2xl font-bold text-primary-accent">Session Complete!</h2>
             <p className="text-slate-400 mt-1">How was your focus on "{sessionName}"?</p>
         </div>
 
@@ -51,7 +51,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ sessionName, onSub
                     <button 
                         key={name} 
                         onClick={() => setMood(name)} 
-                        className={`p-4 rounded-full text-3xl transition transform hover:scale-110 ${mood === name ? 'bg-cyan-500/20 ring-2 ring-cyan-500' : 'bg-slate-700'}`}
+                        className={`p-4 rounded-full text-3xl transition transform hover:scale-110 ${mood === name ? 'bg-primary/20 ring-2 ring-primary-accent' : 'bg-slate-700'}`}
                         title={label}
                         aria-label={label}
                     >
@@ -69,11 +69,11 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ sessionName, onSub
                 onChange={e => setInterruptions(e.target.value)}
                 rows={2}
                 placeholder="e.g., Checked phone, colleague asked a question"
-                className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500"
+                className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-primary-accent"
             />
         </div>
 
-        <button onClick={handleSubmit} className="w-full py-3 bg-cyan-600 text-white font-bold rounded-md hover:bg-cyan-700 transition">
+        <button onClick={handleSubmit} className="w-full py-3 bg-primary text-white font-bold rounded-md hover:bg-primary-focus transition">
           Save & Finish
         </button>
       </div>

@@ -1,11 +1,11 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+
+import React, { useState, useMemo, useCallback } from 'react';
 import { ScheduleItem, AnalyticsQuery, SessionStatus, ScheduleItemType, Timeframe, AnalysisType, Feedback } from '../../types';
-import { getAnalyticsQuery, RateLimitError } from '../../services/geminiService';
+import { getAnalyticsQuery, AIServiceError } from '../../services/aiService';
 import { PaperAirplaneIcon, SparklesIcon } from '../icons';
 import { StatCard } from './StatCard';
 import { SimplePieChart } from './SimplePieChart';
 import { SimpleBarChart } from './SimpleBarChart';
-import { ManualAnalyticsBuilder } from './ManualAnalyticsBuilder';
 
 interface AnalyticsViewProps {
   schedule: ScheduleItem[];
@@ -97,15 +97,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ schedule, onBack }
   const [isLoading, setIsLoading] = useState(false);
   const [analyticsResult, setAnalyticsResult] = useState<AnalyticsQuery | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [resultSource, setResultSource] = useState<'AI' | 'MANUAL' | null>(null);
   const [aiNotification, setAiNotification] = useState<string | null>(null);
-  const [rateLimitResetTime, setRateLimitResetTime] = useState<Date | null>(null);
-  const [countdown, setCountdown] = useState<number | null>(null);
-  const [limitType, setLimitType] = useState<'MINUTE' | 'DAY' | null>(null);
 
-
-  const handleModelSwitch = useCallback((modelName: string) => {
-    setAiNotification(`Switching to fallback model (${modelName})...`);
+  const handleStatusUpdate = useCallback((status: string) => {
+    setAiNotification(status);
     setTimeout(() => setAiNotification(null), 4000);
   }, []);
 
@@ -116,72 +111,25 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ schedule, onBack }
     setIsLoading(true);
     setError(null);
     setAnalyticsResult(null);
-    setResultSource(null);
-    setRateLimitResetTime(null);
-    setCountdown(null);
-    if (limitType !== 'DAY') {
-        setLimitType(null);
-    }
 
     try {
-        const result = await getAnalyticsQuery(query, handleModelSwitch);
+        const result = await getAnalyticsQuery(query, handleStatusUpdate);
         if (result) {
             if (result.error) {
                 setError(result.error);
             } else {
                 setAnalyticsResult(result);
-                setResultSource('AI');
             }
         } else {
             setError("An unexpected error occurred.");
         }
     } catch (err: any) {
-        if (err instanceof RateLimitError) {
-            setLimitType(err.limitType);
-            if (err.limitType === 'DAY') {
-                setError("You've reached the daily AI query limit.");
-            } else { // MINUTE
-                setError("AI models have reached their per-minute rate limit.");
-                setRateLimitResetTime(new Date(Date.now() + 60 * 1000));
-            }
-        } else {
-            setError("Sorry, I couldn't process that request.");
-            setLimitType(null);
-        }
+        setError("Sorry, I couldn't process that request.");
     }
 
     setIsLoading(false);
     setQuery('');
   };
-
-  useEffect(() => {
-    if (!rateLimitResetTime) {
-        return;
-    }
-    
-    const intervalId = setInterval(() => {
-        const secondsLeft = Math.ceil((rateLimitResetTime.getTime() - Date.now()) / 1000);
-        if (secondsLeft > 0) {
-            setCountdown(secondsLeft);
-        } else {
-            setCountdown(null);
-            setRateLimitResetTime(null);
-            setError(null);
-            setLimitType(null);
-            clearInterval(intervalId);
-        }
-    }, 1000);
-    
-    // Initial countdown value
-    setCountdown(Math.ceil((rateLimitResetTime.getTime() - Date.now()) / 1000));
-
-    return () => clearInterval(intervalId);
-  }, [rateLimitResetTime]);
-
-  const handleManualQuery = (manualQuery: AnalyticsQuery) => {
-    setAnalyticsResult(manualQuery);
-    setResultSource('MANUAL');
-  }
 
   const filteredData = useMemo(() => {
     if (!analyticsResult) return [];
@@ -227,7 +175,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ schedule, onBack }
   const renderChart = () => {
     if (!analyticsResult || !analyticsResult.analysisType) return null;
 
-    const themeColor = resultSource === 'AI' ? 'cyan' : 'green';
+    const themeColor = 'cyan';
     const explanation = generateExplanation(analyticsResult);
 
     const ChartWrapper: React.FC<{children: React.ReactNode}> = ({ children }) => (
@@ -255,10 +203,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ schedule, onBack }
         const totalMinutes = filteredData.reduce((sum, item) => sum + item.durationMinutes, 0);
         const hours = Math.floor(totalMinutes / 60);
         const minutes = totalMinutes % 60;
-        return <ChartWrapper><StatCard title={analyticsResult.title} value={`${hours}h ${minutes}m`} themeColor={themeColor} /></ChartWrapper>;
+        return <ChartWrapper><StatCard title={analyticsResult.title} value={`${hours}h ${minutes}m`} /></ChartWrapper>;
       }
       case 'SESSION_COUNT': {
-        return <ChartWrapper><StatCard title={analyticsResult.title} value={filteredData.length.toString()} themeColor={themeColor} /></ChartWrapper>;
+        return <ChartWrapper><StatCard title={analyticsResult.title} value={filteredData.length.toString()} /></ChartWrapper>;
       }
       // Fix: Correctly calculate average focus by iterating through completions instead of assuming a 'feedback' property on ScheduleItem.
       case 'AVERAGE_FOCUS': {
@@ -267,7 +215,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ schedule, onBack }
 
         // If filtering by PENDING status, there's no feedback to average.
         if (statusFilter === SessionStatus.PENDING) {
-             return <ChartWrapper><StatCard title={analyticsResult.title} value="N/A" themeColor={themeColor} /></ChartWrapper>;
+             return <ChartWrapper><StatCard title={analyticsResult.title} value="N/A" /></ChartWrapper>;
         }
 
         const now = new Date();
@@ -306,11 +254,11 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ schedule, onBack }
 
 
         if (allFeedbacks.length === 0) {
-            return <ChartWrapper><StatCard title={analyticsResult.title} value="N/A" themeColor={themeColor} /></ChartWrapper>;
+            return <ChartWrapper><StatCard title={analyticsResult.title} value="N/A" /></ChartWrapper>;
         }
         const totalFocus = allFeedbacks.reduce((sum, item) => sum + (item.focusQuality || 0), 0);
         const avgFocus = (totalFocus / allFeedbacks.length).toFixed(1);
-        return <ChartWrapper><StatCard title={analyticsResult.title} value={`${avgFocus} / 5`} themeColor={themeColor} /></ChartWrapper>;
+        return <ChartWrapper><StatCard title={analyticsResult.title} value={`${avgFocus} / 5`} /></ChartWrapper>;
       }
       case 'TYPE_BREAKDOWN': {
         const breakdown = filteredData.reduce((acc, item) => {
@@ -335,7 +283,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ schedule, onBack }
 
         if (analyticsResult.chartType === 'BAR_CHART') {
             const barChartData = chartData.map(d => ({ label: d.label, value: d.value }));
-            return <ChartWrapper><SimpleBarChart data={barChartData} title={analyticsResult.title} themeColor={themeColor} /></ChartWrapper>;
+            return <ChartWrapper><SimpleBarChart data={barChartData} title={analyticsResult.title} /></ChartWrapper>;
         }
 
         return (
@@ -356,25 +304,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ schedule, onBack }
     if (isLoading) {
         return (
             <div className="flex flex-col items-center gap-4 text-slate-300">
-                <SparklesIcon className="w-12 h-12 animate-spin text-cyan-400" />
+                <SparklesIcon className="w-12 h-12 animate-spin text-primary-accent" />
                 <p>Analyzing your data...</p>
-            </div>
-        );
-    }
-    
-    if (limitType) {
-        return (
-            <div className="w-full animate-fade-in space-y-6">
-                <div className={`text-center p-4 rounded-lg ${limitType === 'MINUTE' ? 'bg-yellow-900/40' : 'bg-red-500/10'}`}>
-                    <p className={`font-semibold ${limitType === 'MINUTE' ? 'text-yellow-400' : 'text-red-400'}`}>{error}</p>
-                    {limitType === 'MINUTE' && (
-                        <p className="text-sm text-slate-300 mt-1">
-                            You can use manual mode, or wait {countdown || '...'}s for AI to return.
-                        </p>
-                    )}
-                </div>
-                <ManualAnalyticsBuilder onGenerateQuery={handleManualQuery} />
-                {analyticsResult && renderChart()}
             </div>
         );
     }
@@ -418,8 +349,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ schedule, onBack }
                 &larr; Back to Dashboard
             </button>
         </div>
-        <h2 className="text-3xl font-bold text-cyan-400 text-center">
-            {limitType ? "Analytics Dashboard (Manual)" : "Analytics Dashboard"}
+        <h2 className="text-3xl font-bold text-primary-accent text-center">
+            Analytics Dashboard
         </h2>
       </div>
 
@@ -427,26 +358,24 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ schedule, onBack }
         {renderContent()}
       </div>
 
-      {!limitType && (
-          <form onSubmit={handleQuerySubmit} className="mt-6 flex gap-2 animate-fade-in">
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="e.g., How much deep work did I do this month?"
-              className="flex-1 bg-slate-700 border border-slate-600 rounded-md px-4 py-3 text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500 transition"
-              disabled={isLoading}
-            />
-            <button
-              type="submit"
-              disabled={isLoading || !query.trim()}
-              className="p-4 bg-cyan-600 text-white rounded-md hover:bg-cyan-700 transition disabled:bg-slate-600 disabled:cursor-not-allowed"
-              aria-label="Send query"
-            >
-              <PaperAirplaneIcon className="w-5 h-5" />
-            </button>
-          </form>
-      )}
+      <form onSubmit={handleQuerySubmit} className="mt-6 flex gap-2 animate-fade-in">
+        <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="e.g., How much deep work did I do this month?"
+            className="flex-1 bg-slate-700 border border-slate-600 rounded-md px-4 py-3 text-white placeholder-slate-400 focus:ring-2 focus:ring-primary-accent transition"
+            disabled={isLoading || !process.env.API_KEY}
+        />
+        <button
+            type="submit"
+            disabled={isLoading || !query.trim() || !process.env.API_KEY}
+            className="p-4 bg-primary text-white rounded-md hover:bg-primary-focus transition disabled:bg-slate-600 disabled:cursor-not-allowed"
+            aria-label="Send query"
+        >
+            <PaperAirplaneIcon className="w-5 h-5" />
+        </button>
+      </form>
     </div>
   );
 };

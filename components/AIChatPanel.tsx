@@ -1,7 +1,6 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { AIAssistedWorkSession, ScheduleItem } from '../types';
-import { getChatResponse } from '../services/geminiService';
+import { getChatResponse } from '../services/aiService';
 import { PaperAirplaneIcon, SparklesIcon, UserIcon } from './icons';
 
 interface AIChatPanelProps {
@@ -57,7 +56,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ session, onUpdateSessi
                     <SparklesIcon className="w-5 h-5 text-violet-400" />
                 </div>
               )}
-              <div className={`max-w-xs md:max-w-sm lg:max-w-md p-3 rounded-lg ${msg.role === 'user' ? 'bg-cyan-800' : 'bg-slate-700'}`}>
+              <div className={`max-w-xs md:max-w-sm lg:max-w-md p-3 rounded-lg ${msg.role === 'user' ? 'bg-primary' : 'bg-slate-700'}`}>
                 <p className="text-white whitespace-pre-wrap">{msg.parts[0].text}</p>
               </div>
               {msg.role === 'user' && (
@@ -90,13 +89,13 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({ session, onUpdateSessi
           value={userInput}
           onChange={(e) => setUserInput(e.target.value)}
           placeholder="Ask for help..."
-          className="flex-1 bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500"
+          className="flex-1 bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-primary-accent"
           disabled={isLoading}
         />
         <button
           type="submit"
           disabled={isLoading || !userInput.trim()}
-          className="p-3 bg-cyan-600 text-white rounded-md hover:bg-cyan-700 transition disabled:bg-slate-600 disabled:cursor-not-allowed"
+          className="p-3 bg-primary text-white rounded-md hover:bg-primary-focus transition disabled:bg-slate-600 disabled:cursor-not-allowed"
           aria-label="Send message"
         >
           <PaperAirplaneIcon className="w-5 h-5" />

@@ -65,6 +65,7 @@ export interface DeepWorkSession extends BaseScheduleItem {
   ritual: string[] | null;
   ritualChecklist: RitualItem[] | null;
   workspaceImageUrl: string | null;
+  wasCreatedWithAI?: boolean;
 }
 
 export interface ShallowWorkTask extends BaseScheduleItem {

@@ -1,18 +1,22 @@
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { ScheduleItem, ScheduleItemType, SessionStatus, Feedback, DeepWorkSession, CompletionRecord } from './types';
 import { SessionScheduler } from './components/SessionScheduler';
 import { FocusView } from './components/FocusView';
 import { FeedbackModal } from './components/FeedbackModal';
 import { PreSessionChecklist } from './components/PreSessionChecklist';
 import { TaskReviewModal } from './components/TaskReviewModal';
-import { PlusIcon, ChartBarIcon, CalendarIcon } from './components/icons';
+import { PlusIcon, ChartBarIcon, CalendarIcon, UserIcon, SparklesIcon, Cog6ToothIcon } from './components/icons';
 import { AnalyticsView } from './components/analytics/AnalyticsView';
 import { HistoryView } from './components/HistoryView';
 import { PauseTaskModal } from './components/PauseTaskModal';
+import { SettingsModal } from './components/SettingsModal';
+import { getSettings, saveSettings, AppSettings } from './services/settingsService';
+
 
 type AppView = 'DASHBOARD' | 'SCHEDULING' | 'FOCUS' | 'PRE_SESSION_CHECKLIST' | 'ANALYTICS' | 'HISTORY';
 type ScheduleView = 'TODAY' | 'ONCE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
+
 
 // A helper to get YYYY-MM-DD from a Date object in the local timezone.
 const toLocalYYYYMMDD = (date: Date): string => {
@@ -31,10 +35,15 @@ const scheduleViewOptions: { name: string; value: ScheduleView }[] = [
 ];
 
 
-const Header = () => (
-    <header className="p-4 text-center">
-        <h1 className="text-3xl font-bold text-cyan-400 tracking-wider">Deep Work</h1>
+const Header = ({ onOpenSettings }: { onOpenSettings: () => void; }) => (
+    <header className="p-4 text-center relative">
+        <h1 className="text-3xl font-bold text-primary-accent tracking-wider">Deep Work</h1>
         <p className="text-slate-400">Your assistant for sustained focus.</p>
+        <div className="absolute top-4 right-4 flex items-center gap-2">
+            <button onClick={onOpenSettings} className="p-2 text-slate-400 hover:text-white transition-colors" aria-label="Settings">
+                <Cog6ToothIcon className="w-6 h-6" />
+            </button>
+        </div>
     </header>
 );
 
@@ -181,6 +190,18 @@ const ScheduleListItem: React.FC<ScheduleListItemProps> = ({ item, displayDate, 
                             </span>
                         )}
                         <p>{item.durationMinutes} min</p>
+                        {item.type === ScheduleItemType.DEEP_WORK && (
+                            <div title={(item as DeepWorkSession).wasCreatedWithAI ? "AI-Assisted Creation" : "Manual Creation"} className="flex items-center gap-1.5 text-slate-500">
+                                {(item as DeepWorkSession).wasCreatedWithAI ? (
+                                    <SparklesIcon className="w-4 h-4 text-green-400" />
+                                ) : (
+                                    <UserIcon className="w-4 h-4" />
+                                )}
+                                <span className="text-xs font-medium">
+                                    {(item as DeepWorkSession).wasCreatedWithAI ? "AI" : "Manual"}
+                                </span>
+                            </div>
+                        )}
                         {item.repeatFrequency !== 'ONCE' && (
                             <div className="flex items-center gap-2 text-slate-500">
                                 <RepeatIcon className="w-4 h-4" />
@@ -305,6 +326,18 @@ const App: React.FC = () => {
   const [sessionForFeedback, setSessionForFeedback] = useState<{item: ScheduleItem, date: Date} | null>(null);
   const [taskForReview, setTaskForReview] = useState<{item: ScheduleItem, date: Date} | null>(null);
   const [taskToPause, setTaskToPause] = useState<ScheduleItem | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState<AppSettings>(getSettings());
+  
+  useEffect(() => {
+    document.body.className = `bg-slate-900 text-white theme-${settings.theme}`;
+  }, [settings.theme]);
+
+  const handleSaveSettings = (newSettings: AppSettings) => {
+    saveSettings(newSettings);
+    setSettings(newSettings);
+    setIsSettingsOpen(false);
+  };
 
   const handleAddItem = useCallback((item: ScheduleItem) => {
     setSchedule(prev => [...prev, item]);
@@ -393,9 +426,34 @@ const App: React.FC = () => {
 
   const handleSessionComplete = useCallback(() => {
     if (activeSession) {
-      setSessionForFeedback({ item: activeSession, date: new Date() });
-      setActiveSession(null);
-      setCurrentView('DASHBOARD');
+      if (activeSession.type === ScheduleItemType.SHALLOW_WORK) {
+        // For shallow tasks, bypass the feedback modal and mark as complete immediately.
+        const completionDate = new Date();
+        const completionDateStr = toLocalYYYYMMDD(completionDate);
+
+        setSchedule(prev => prev.map(s => {
+            if (s.id === activeSession.id) {
+                // A null feedback indicates simple completion without detailed review.
+                const newCompletion: CompletionRecord = { date: completionDateStr, feedback: null };
+                const updatedCompletions = [...(s.completions || []), newCompletion];
+                
+                if (s.repeatFrequency === 'ONCE') {
+                    return { ...s, completions: updatedCompletions, status: SessionStatus.COMPLETED };
+                } else {
+                    return { ...s, completions: updatedCompletions };
+                }
+            }
+            return s;
+        }));
+        
+        setActiveSession(null);
+        setCurrentView('DASHBOARD');
+      } else {
+        // For deep work sessions (and any other types), show the feedback modal.
+        setSessionForFeedback({ item: activeSession, date: new Date() });
+        setActiveSession(null);
+        setCurrentView('DASHBOARD');
+      }
     }
   }, [activeSession]);
 
@@ -480,7 +538,7 @@ const App: React.FC = () => {
   const renderView = () => {
     switch (currentView) {
       case 'SCHEDULING':
-        return <SessionScheduler onAddItem={handleAddItem} onCancel={() => setCurrentView('DASHBOARD')} schedule={schedule} />;
+        return <SessionScheduler onAddItem={handleAddItem} onCancel={() => setCurrentView('DASHBOARD')} schedule={schedule} settings={settings} />;
       case 'PRE_SESSION_CHECKLIST':
         return activeSession && activeSession.type === ScheduleItemType.DEEP_WORK ? <PreSessionChecklist session={activeSession} onUpdateSession={handleUpdateActiveSession} onStartFocus={handleChecklistComplete} onBack={handleBackToDashboard} /> : null;
       case 'FOCUS':
@@ -510,10 +568,17 @@ const App: React.FC = () => {
       
         return (
           <div className="w-full max-w-2xl mx-auto space-y-6 p-4">
+             {!process.env.API_KEY && (
+                <div className="p-4 bg-red-900/50 text-red-300 rounded-lg text-center">
+                    <p className="font-bold">Warning: AI Features Disabled</p>
+                    <p className="text-sm">No Gemini API key is configured. AI assistance is unavailable.</p>
+                </div>
+            )}
+
             <div className="grid grid-cols-3 gap-4">
                 <button
                 onClick={() => setCurrentView('SCHEDULING')}
-                className="w-full flex items-center justify-center gap-2 bg-cyan-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-cyan-700 transition shadow-lg"
+                className="w-full flex items-center justify-center gap-2 bg-primary text-white font-bold py-3 px-4 rounded-lg hover:bg-primary-focus transition shadow-lg"
                 >
                 <PlusIcon className="w-6 h-6" />
                 Schedule
@@ -536,7 +601,7 @@ const App: React.FC = () => {
             
             <div className="grid grid-cols-5 gap-2 p-1 bg-slate-800 rounded-lg">
                 {scheduleViewOptions.map(({name, value}) => (
-                    <button key={value} onClick={() => setScheduleView(value)} className={`px-3 py-2 rounded-md text-sm font-semibold transition capitalize ${scheduleView === value ? 'bg-cyan-500 text-slate-900' : 'bg-transparent hover:bg-slate-700'}`}>
+                    <button key={value} onClick={() => setScheduleView(value)} className={`px-3 py-2 rounded-md text-sm font-semibold transition capitalize ${scheduleView === value ? 'bg-primary text-slate-900' : 'bg-transparent hover:bg-slate-700'}`}>
                         {name}
                     </button>
                 ))}
@@ -603,7 +668,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans flex flex-col">
-      <Header />
+      <Header onOpenSettings={() => setIsSettingsOpen(true)} />
       <main className="flex-grow flex justify-center items-start py-4">
         {renderView()}
       </main>
@@ -623,6 +688,13 @@ const App: React.FC = () => {
             onSubmit={handlePauseSubmit}
         />
       )}
+      {isSettingsOpen && (
+        <SettingsModal 
+            currentSettings={settings}
+            onClose={() => setIsSettingsOpen(false)}
+            onSave={handleSaveSettings}
+        />
+      )}
       <style>{`
         @keyframes fade-in {
           from { opacity: 0; }
@@ -639,8 +711,10 @@ const App: React.FC = () => {
         .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
         .animate-fade-in-up { animation: fade-in-up 0.4s ease-out forwards; }
         .animate-fade-in-down { animation: fade-in-down 0.4s ease-out forwards; }
-        input[type="date"]::-webkit-calendar-picker-indicator {
+        input[type="date"]::-webkit-calendar-picker-indicator,
+        input[type="time"]::-webkit-calendar-picker-indicator {
             filter: invert(1);
+            cursor: pointer;
         }
       `}</style>
     </div>

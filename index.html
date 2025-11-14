@@ -17,6 +17,35 @@
   }
 }
 </script>
+<style>
+    /* Default Theme: Cyan */
+    :root {
+      --color-primary-accent: 6 182 212; /* cyan-500 */
+      --color-primary: 8 145 178; /* cyan-600 */
+      --color-primary-focus: 14 116 144; /* cyan-700 */
+    }
+
+    /* Green Theme */
+    body.theme-green {
+      --color-primary-accent: 74 222 128; /* green-400 */
+      --color-primary: 34 197 94; /* green-500 */
+      --color-primary-focus: 22 163 74; /* green-600 */
+    }
+    
+    /* Orange Theme */
+    body.theme-orange {
+      --color-primary-accent: 251 146 60; /* orange-400 */
+      --color-primary: 249 115 22; /* orange-500 */
+      --color-primary-focus: 234 88 12; /* orange-600 */
+    }
+
+    .text-primary-accent { color: rgb(var(--color-primary-accent)); }
+    .bg-primary { background-color: rgb(var(--color-primary)); }
+    .hover\:bg-primary-focus:hover { background-color: rgb(var(--color-primary-focus)); }
+    .focus\:ring-primary-accent:focus {
+        --tw-ring-color: rgb(var(--color-primary-accent));
+    }
+</style>
 </head>
   <body class="bg-slate-900 text-white">
     <div id="root"></div>

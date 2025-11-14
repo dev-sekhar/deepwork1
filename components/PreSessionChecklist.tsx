@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useCallback } from 'react';
 import { DeepWorkSession, RitualItem } from '../types';
 import { CameraIcon } from './icons';
@@ -41,7 +40,7 @@ export const PreSessionChecklist: React.FC<PreSessionChecklistProps> = ({ sessio
   };
   
   const allItemsCompleted = useMemo(() => checklist.every(item => item.completed), [checklist]);
-  const isReady = allItemsCompleted && !!imageUrl;
+  const isReady = allItemsCompleted;
 
   return (
     <div className="p-6 bg-slate-800 rounded-lg shadow-lg w-full max-w-2xl mx-auto animate-fade-in-up">
@@ -49,7 +48,7 @@ export const PreSessionChecklist: React.FC<PreSessionChecklistProps> = ({ sessio
         <button onClick={onBack} className="absolute top-0 left-0 text-slate-400 hover:text-white transition">
            &larr; Back
         </button>
-        <h2 className="text-2xl font-bold text-cyan-400">Pre-flight Checklist</h2>
+        <h2 className="text-2xl font-bold text-primary-accent">Pre-flight Checklist</h2>
         <p className="text-slate-400">Prepare for deep focus on "{session.taskName}"</p>
         <p className="text-slate-300 mt-1"><strong>Goal:</strong> {session.goal}</p>
       </div>
@@ -61,7 +60,7 @@ export const PreSessionChecklist: React.FC<PreSessionChecklistProps> = ({ sessio
               type="checkbox"
               checked={item.completed}
               onChange={() => handleToggleItem(index)}
-              className="h-6 w-6 rounded border-slate-600 bg-slate-700 text-cyan-500 focus:ring-cyan-500 cursor-pointer"
+              className="h-6 w-6 rounded border-slate-600 bg-slate-700 text-primary-accent focus:ring-primary-accent cursor-pointer"
             />
             <span className={`flex-1 ${item.completed ? 'text-slate-400 line-through' : 'text-slate-200'}`}>{item.text}</span>
           </label>
@@ -75,7 +74,7 @@ export const PreSessionChecklist: React.FC<PreSessionChecklistProps> = ({ sessio
                     {imageUrl && <div className="w-3 h-3 bg-green-500 rounded-sm"></div>}
                 </div>
                 <div className="flex-1">
-                    <span className="text-slate-200">Upload image of your clean workspace.</span>
+                    <span className="text-slate-200">Upload image of your clean workspace (optional).</span>
                     {imageUrl ? (
                         <p className="text-xs text-green-400">Image uploaded successfully!</p>
                     ) : (
@@ -99,7 +98,7 @@ export const PreSessionChecklist: React.FC<PreSessionChecklistProps> = ({ sessio
         <button
           onClick={onStartFocus}
           disabled={!isReady}
-          className="w-full py-3 bg-cyan-600 text-white font-bold rounded-md hover:bg-cyan-700 transition disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed"
+          className="w-full py-3 bg-primary text-white font-bold rounded-md hover:bg-primary-focus transition disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed"
         >
           {isReady ? 'Begin Focus Session' : 'Complete all steps to begin'}
         </button>

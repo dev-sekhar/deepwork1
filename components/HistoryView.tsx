@@ -65,7 +65,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ schedule, onBack, onRe
 
         let dayClasses = 'relative flex items-center justify-center h-10 w-10 rounded-full cursor-pointer transition-colors ';
         if (isSelected) {
-            dayClasses += 'bg-cyan-500 text-slate-900 font-bold';
+            dayClasses += 'bg-primary text-slate-900 font-bold';
         } else if (isToday) {
             dayClasses += 'bg-slate-700 text-white';
         } else {
@@ -76,7 +76,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ schedule, onBack, onRe
             <div key={day} className={dayClasses} onClick={() => setSelectedDate(date)}>
                 {day}
                 {tasksCount && tasksCount > 0 && 
-                    <div className={`absolute -top-1 -right-1 text-xs ${isSelected ? 'text-cyan-500 bg-slate-900' : 'text-slate-900 bg-cyan-500'} h-5 w-5 rounded-full flex items-center justify-center font-bold shadow`}>
+                    <div className={`absolute -top-1 -right-1 text-xs ${isSelected ? 'text-primary bg-slate-900' : 'text-slate-900 bg-primary'} h-5 w-5 rounded-full flex items-center justify-center font-bold shadow`}>
                         {tasksCount}
                     </div>
                 }
@@ -109,7 +109,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ schedule, onBack, onRe
             &larr; Back to Dashboard
             </button>
             <div className="text-center">
-                <h2 className="text-2xl font-bold text-cyan-400 mt-1">Task History</h2>
+                <h2 className="text-2xl font-bold text-primary-accent mt-1">Task History</h2>
             </div>
         </div>
 

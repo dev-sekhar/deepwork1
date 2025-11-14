@@ -49,7 +49,7 @@ export const TaskReviewModal: React.FC<TaskReviewModalProps> = ({ item, reviewDa
   const reviewDateStr = toLocalYYYYMMDD(reviewDate);
   const completion = item.completions?.find(c => c.date === reviewDateStr);
   
-  if (!completion?.feedback) return null;
+  if (!completion) return null;
   
   const { feedback } = completion;
 
@@ -62,8 +62,11 @@ export const TaskReviewModal: React.FC<TaskReviewModalProps> = ({ item, reviewDa
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50 animate-fade-in" onClick={onClose}>
       <div className="bg-slate-800 rounded-lg shadow-xl p-8 w-full max-w-md space-y-6 transform animate-fade-in-up" onClick={e => e.stopPropagation()}>
         <div className="text-center">
-            <h2 className="text-2xl font-bold text-cyan-400">Session Review</h2>
+            <h2 className="text-2xl font-bold text-primary-accent">Session Review</h2>
             <h3 className={`text-xl font-bold ${textColorClass} mt-1 truncate`} title={item.taskName}>{item.taskName}</h3>
+             <p className="text-sm text-slate-400 mt-1">
+                Completed on {reviewDate.toLocaleDateString()}
+            </p>
         </div>
 
         <div className="space-y-4 text-sm max-h-[60vh] overflow-y-auto pr-2">
@@ -83,25 +86,35 @@ export const TaskReviewModal: React.FC<TaskReviewModalProps> = ({ item, reviewDa
                     <p className="text-white bg-slate-900/50 p-2 rounded">{(item as DeepWorkSession).goal}</p>
                 </div>
             )}
-            <div className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg">
-                <span className="font-medium text-slate-300">Focus Quality</span>
-                {renderStars(feedback.focusQuality)}
-            </div>
-            {feedback.mood && (
-                <div className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg">
-                    <span className="font-medium text-slate-300">Mood</span>
-                    <div className="flex items-center gap-2">
-                        <span className="text-xl">{moods[feedback.mood].emoji}</span>
-                        <span className="text-white">{moods[feedback.mood].label}</span>
+            
+            {feedback ? (
+                <>
+                    <div className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg">
+                        <span className="font-medium text-slate-300">Focus Quality</span>
+                        {renderStars(feedback.focusQuality)}
                     </div>
+                    {feedback.mood && (
+                        <div className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg">
+                            <span className="font-medium text-slate-300">Mood</span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xl">{moods[feedback.mood].emoji}</span>
+                                <span className="text-white">{moods[feedback.mood].label}</span>
+                            </div>
+                        </div>
+                    )}
+                     {feedback.interruptions && (
+                        <div className="p-3 bg-slate-700/50 rounded-lg">
+                            <p className="font-medium text-slate-300 mb-1">Interruptions</p>
+                            <p className="text-white italic bg-slate-900/50 p-2 rounded">"{feedback.interruptions}"</p>
+                        </div>
+                    )}
+                </>
+            ) : (
+                <div className="p-3 bg-slate-700/50 rounded-lg text-center">
+                    <p className="font-medium text-slate-300">This shallow task was marked complete without detailed feedback.</p>
                 </div>
             )}
-             {feedback.interruptions && (
-                <div className="p-3 bg-slate-700/50 rounded-lg">
-                    <p className="font-medium text-slate-300 mb-1">Interruptions</p>
-                    <p className="text-white italic bg-slate-900/50 p-2 rounded">"{feedback.interruptions}"</p>
-                </div>
-            )}
+
             {item.pauses && item.pauses.length > 0 && (
                 <div className="p-3 bg-slate-700/50 rounded-lg">
                     <p className="font-medium text-slate-300 mb-2">Pause History</p>

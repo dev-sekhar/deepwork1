@@ -1,18 +1,20 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ScheduleItem, ScheduleItemType, SessionStatus, DeepWorkSession, ShallowWorkTask, GoalAnalysisResult } from '../types';
-import { getPreSessionRitual, evaluateSMARTGoal, getSuggestedDuration, RateLimitError } from '../services/geminiService';
+import { getPreSessionRitual, evaluateSMARTGoal, getSuggestedDuration, AIServiceError } from '../services/aiService';
 import { SparklesIcon, CheckIcon } from './icons';
+import { AppSettings } from '../services/settingsService';
 
 interface SessionSchedulerProps {
   onAddItem: (item: ScheduleItem) => void;
   onCancel: () => void;
   schedule: ScheduleItem[];
+  settings: AppSettings;
 }
 
 const WEEK_DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, onCancel, schedule }) => {
+export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, onCancel, schedule, settings }) => {
   const toLocalYYYYMMDD = (date: Date): string => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -40,21 +42,18 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
   const [goalAnalysis, setGoalAnalysis] = useState<GoalAnalysisResult | null>(null);
   const [isFetchingDuration, setIsFetchingDuration] = useState(false);
   const [suggestedDuration, setSuggestedDuration] = useState<number | null>(null);
-  const [aiMode, setAiMode] = useState<'ENABLED' | 'MINUTE_LIMITED' | 'DAY_LIMITED' | 'DISABLED'>('ENABLED');
   const [aiNotification, setAiNotification] = useState<string | null>(null);
-  const [rateLimitResetTime, setRateLimitResetTime] = useState<Date | null>(null);
-  const [countdown, setCountdown] = useState<number | null>(null);
-
+  const [aiAssistanceFetched, setAiAssistanceFetched] = useState(false);
 
   const debounceTimeoutRef = useRef<number | null>(null);
 
-  const handleModelSwitch = useCallback((modelName: string) => {
-    setAiNotification(`Switching to fallback model (${modelName})...`);
+  const handleStatusUpdate = useCallback((status: string) => {
+    setAiNotification(status);
     setTimeout(() => setAiNotification(null), 4000);
   }, []);
 
   const fetchAIAssistance = useCallback(async () => {
-    if (!taskName || !goal || aiMode !== 'ENABLED' || itemType !== ScheduleItemType.DEEP_WORK) return;
+    if (!taskName || !goal || !process.env.API_KEY || itemType !== ScheduleItemType.DEEP_WORK) return;
 
     setIsFetchingRitual(true);
     setIsAnalyzingGoal(true);
@@ -62,43 +61,38 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
     setRitual(null);
     setGoalAnalysis(null);
     setSuggestedDuration(null);
+    setAiAssistanceFetched(false);
 
     try {
       const [generatedRitual, analysisResult, durationSuggestion] = await Promise.all([
-        getPreSessionRitual(taskName, goal, handleModelSwitch),
-        evaluateSMARTGoal(taskName, goal, handleModelSwitch),
-        getSuggestedDuration(taskName, goal, handleModelSwitch),
+        getPreSessionRitual(taskName, goal, handleStatusUpdate),
+        evaluateSMARTGoal(taskName, goal, handleStatusUpdate),
+        getSuggestedDuration(taskName, goal, handleStatusUpdate),
       ]);
 
       setRitual(generatedRitual);
       setGoalAnalysis(analysisResult);
       setSuggestedDuration(durationSuggestion);
+      setAiAssistanceFetched(true);
     } catch (error: any) {
       console.error("AI Assistance Error:", error);
-      if (error instanceof RateLimitError) {
-        if (error.limitType === 'DAY') {
-          setAiMode('DAY_LIMITED');
-        } else { // MINUTE
-          setAiMode('MINUTE_LIMITED');
-          setRateLimitResetTime(new Date(Date.now() + 60 * 1000));
-        }
-      } else {
-        setAiMode('DISABLED');
+      setError("AI assistance failed. Please try again later.");
+      if (error instanceof AIServiceError) {
+          // You could add more specific error handling here if needed
       }
-      setAiNotification(null);
     } finally {
       setIsFetchingRitual(false);
       setIsAnalyzingGoal(false);
       setIsFetchingDuration(false);
     }
-  }, [taskName, goal, aiMode, itemType, handleModelSwitch]);
+  }, [taskName, goal, itemType, handleStatusUpdate]);
 
   useEffect(() => {
     if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
     
     const hasInput = taskName.trim().length > 3 && goal.trim().length > 10;
     
-    if (hasInput && aiMode === 'ENABLED' && itemType === ScheduleItemType.DEEP_WORK) {
+    if (hasInput && itemType === ScheduleItemType.DEEP_WORK) {
       debounceTimeoutRef.current = window.setTimeout(() => {
         fetchAIAssistance();
       }, 800);
@@ -107,31 +101,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
     return () => {
       if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
     };
-  }, [taskName, goal, aiMode, itemType, fetchAIAssistance]);
-
-  useEffect(() => {
-    if (aiMode !== 'MINUTE_LIMITED' || !rateLimitResetTime) {
-      return;
-    }
-
-    const intervalId = setInterval(() => {
-      const secondsLeft = Math.ceil((rateLimitResetTime.getTime() - Date.now()) / 1000);
-      if (secondsLeft > 0) {
-        setCountdown(secondsLeft);
-      } else {
-        setCountdown(null);
-        setRateLimitResetTime(null);
-        setAiMode('ENABLED');
-        clearInterval(intervalId);
-      }
-    }, 1000);
-
-    // Initial countdown value
-    setCountdown(Math.ceil((rateLimitResetTime.getTime() - Date.now()) / 1000));
-
-
-    return () => clearInterval(intervalId);
-  }, [aiMode, rateLimitResetTime]);
+  }, [taskName, goal, itemType, fetchAIAssistance]);
 
   
   const handleToggleRepeatDay = (dayIndex: number) => {
@@ -153,6 +123,61 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
     
     const newItemStart = new Date(`${startDate}T${startTime}`);
 
+    // --- Settings Enforcement Validation ---
+    
+    // 1. Holiday Check
+    const holiday = settings.holidays.find(h => startDate >= h.startDate && startDate <= h.endDate);
+    if (holiday) {
+        setError(`Cannot schedule on a holiday: "${holiday.description}".`);
+        return;
+    }
+
+    // 2. Availability Day & Time Check
+    const dayOfWeek = newItemStart.getDay();
+    if (repeatFrequency === 'DAILY') {
+        setError("Daily tasks are disabled as they would fall on non-working days. Please use a Weekly schedule and select your working days.");
+        return;
+    }
+
+    if (repeatFrequency === 'WEEKLY') {
+        if (repeatOn.length === 0) {
+            setError("Please select at least one day for a weekly task.");
+            return;
+        }
+        const nonWorkingDaySelected = repeatOn.some(day => !settings.availability.days.includes(day));
+        if (nonWorkingDaySelected) {
+            setError("A selected day is a non-working day. Please adjust your selection or availability settings.");
+            return;
+        }
+    } else { // For ONCE and MONTHLY, check the specific start date
+        if (!settings.availability.days.includes(dayOfWeek)) {
+            const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek];
+            setError(`${dayName} is a non-working day. Please pick a different date or adjust your availability settings.`);
+            return;
+        }
+    }
+    
+    // 3. Time check
+    const [startHour, startMinute] = settings.availability.startTime.split(':').map(Number);
+    const [endHour, endMinute] = settings.availability.endTime.split(':').map(Number);
+    const [selectedHour, selectedMinute] = startTime.split(':').map(Number);
+    
+    const scheduleStartTotalMinutes = startHour * 60 + startMinute;
+    const scheduleEndTotalMinutes = endHour * 60 + endMinute;
+    const selectedStartTotalMinutes = selectedHour * 60 + selectedMinute;
+    
+    if (selectedStartTotalMinutes < scheduleStartTotalMinutes || selectedStartTotalMinutes > scheduleEndTotalMinutes) {
+        setError(`Start time is outside your working hours (${settings.availability.startTime} - ${settings.availability.endTime}).`);
+        return;
+    }
+    
+    if (selectedStartTotalMinutes + duration > scheduleEndTotalMinutes) {
+        setError(`Session ends after your working hours (${settings.availability.endTime}). Please shorten the duration or start earlier.`);
+        return;
+    }
+
+    // --- End Settings Validation ---
+    
     if (newItemStart < new Date()) {
         setError("Cannot schedule tasks in the past. Please select a future date and time.");
         return;
@@ -166,8 +191,6 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
     const newItemEnd = new Date(newItemStart.getTime() + duration * 60 * 1000);
 
     // --- Conflict validation and suggestion logic ---
-    const dayOfWeek = newItemStart.getDay();
-
     const getEffectiveStartTime = (item: ScheduleItem, date: Date): Date => {
       const itemTime = new Date(item.startDate);
       const effectiveDate = new Date(date);
@@ -257,6 +280,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
         ritual,
         ritualChecklist: ritual ? ritual.map(text => ({ text, completed: false })) : null,
         workspaceImageUrl: null,
+        wasCreatedWithAI: aiAssistanceFetched,
       };
       onAddItem(newSession);
     } else {
@@ -273,6 +297,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
     setRitual(null);
     setGoalAnalysis(null);
     setSuggestedDuration(null);
+    setAiAssistanceFetched(false);
     if (newItemType === ScheduleItemType.DEEP_WORK) {
         setDuration(90); 
     } else {
@@ -287,7 +312,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
               {aiNotification}
           </div>
       )}
-      <h2 className="text-2xl font-bold text-cyan-400 mb-6">Schedule New Item</h2>
+      <h2 className="text-2xl font-bold text-primary-accent mb-6">Schedule New Item</h2>
       <form onSubmit={handleSubmit} className="space-y-6">
 
         <div>
@@ -335,24 +360,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                 required
               />
             </div>
-
-            {aiMode === 'MINUTE_LIMITED' && (
-                <div className="p-3 bg-yellow-500/20 text-yellow-300 text-sm rounded-md text-center animate-fade-in">
-                    AI features are rate-limited.
-                    {countdown !== null ? ` Please try again in ${countdown}s.` : ' Retrying soon.'}
-                </div>
-            )}
-            {aiMode === 'DAY_LIMITED' && (
-                <div className="p-3 bg-orange-500/20 text-orange-300 text-sm rounded-md text-center animate-fade-in">
-                    You've reached the daily limit for AI features. Please try again tomorrow.
-                </div>
-            )}
-            {aiMode === 'DISABLED' && (
-                <div className="p-3 bg-red-500/20 text-red-400 text-sm rounded-md text-center animate-fade-in">
-                    AI suggestions are temporarily unavailable.
-                </div>
-            )}
-
+            
             {goalAnalysis && !isAnalyzingGoal && (
                 <div className={`p-3 rounded-lg text-sm animate-fade-in-up ${goalAnalysis.isSMART ? 'bg-green-500/10 text-green-300' : 'bg-yellow-500/10'}`}>
                     <p className={`${goalAnalysis.isSMART ? '' : 'text-yellow-300'}`}>
@@ -457,7 +465,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                     value={startDate}
                     onChange={e => setStartDate(e.target.value)}
                     min={toLocalYYYYMMDD(new Date())}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500"
+                    className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-primary-accent"
                  />
             </div>
              <div>
@@ -467,7 +475,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                     type="time"
                     value={startTime}
                     onChange={e => setStartTime(e.target.value)}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500"
+                    className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-primary-accent"
                  />
             </div>
         </div>
@@ -481,7 +489,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                         type="button"
                         onClick={() => setRepeatFrequency(freq)}
                         className={`px-3 py-2 rounded-md text-sm font-semibold transition capitalize ${
-                            repeatFrequency === freq ? 'bg-cyan-500 text-slate-900' : 'bg-transparent hover:bg-slate-700'
+                            repeatFrequency === freq ? 'bg-primary text-slate-900' : 'bg-transparent hover:bg-slate-700'
                         }`}
                     >
                         {freq.toLowerCase()}
@@ -500,7 +508,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                             type="button"
                             onClick={() => handleToggleRepeatDay(index)}
                             className={`w-10 h-10 rounded-full font-bold text-sm flex items-center justify-center transition ${
-                                repeatOn.includes(index) ? 'bg-cyan-500 text-slate-900' : 'bg-slate-700 hover:bg-slate-600'
+                                repeatOn.includes(index) ? 'bg-primary text-slate-900' : 'bg-slate-700 hover:bg-slate-600'
                             }`}
                         >{day}</button>
                     ))}
@@ -517,7 +525,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                     value={endDate}
                     onChange={e => setEndDate(e.target.value)}
                     min={startDate}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500"
+                    className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-primary-accent"
                  />
             </div>
         )}
@@ -538,7 +546,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
           </button>
           <button
             type="submit"
-            className="px-6 py-2 bg-cyan-600 text-white font-semibold rounded-md hover:bg-cyan-700 transition"
+            className="px-6 py-2 bg-primary text-white font-semibold rounded-md hover:bg-primary-focus transition"
           >
             Add to Schedule
           </button>
