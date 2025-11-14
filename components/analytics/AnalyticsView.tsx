@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { ScheduleItem, AnalyticsQuery, SessionStatus, ScheduleItemType, Timeframe, AnalysisType } from '../../types';
+import { ScheduleItem, AnalyticsQuery, SessionStatus, ScheduleItemType, Timeframe, AnalysisType, Feedback } from '../../types';
 import { getAnalyticsQuery, RateLimitError } from '../../services/geminiService';
 import { PaperAirplaneIcon, SparklesIcon } from '../icons';
 import { StatCard } from './StatCard';
@@ -260,13 +260,56 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ schedule, onBack }
       case 'SESSION_COUNT': {
         return <ChartWrapper><StatCard title={analyticsResult.title} value={filteredData.length.toString()} themeColor={themeColor} /></ChartWrapper>;
       }
+      // Fix: Correctly calculate average focus by iterating through completions instead of assuming a 'feedback' property on ScheduleItem.
       case 'AVERAGE_FOCUS': {
-        const sessionsWithFeedback = filteredData.filter(item => item.feedback);
-        if (sessionsWithFeedback.length === 0) {
+        const typeFilter = analyticsResult.filters?.taskType;
+        const statusFilter = analyticsResult.filters?.status;
+
+        // If filtering by PENDING status, there's no feedback to average.
+        if (statusFilter === SessionStatus.PENDING) {
+             return <ChartWrapper><StatCard title={analyticsResult.title} value="N/A" themeColor={themeColor} /></ChartWrapper>;
+        }
+
+        const now = new Date();
+        now.setHours(0,0,0,0); // for day-level comparison
+        let startDate = new Date(0);
+        
+        switch (analyticsResult.timeframe) {
+            case 'TODAY':
+                startDate = now;
+                break;
+            case 'LAST_7_DAYS':
+                startDate = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+                break;
+            case 'THIS_MONTH':
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                break;
+            // 'ALL_TIME' uses default startDate
+        }
+
+        const allFeedbacks: Feedback[] = schedule.flatMap(item => {
+            if (typeFilter && item.type !== typeFilter) {
+                return [];
+            }
+            return item.completions || [];
+        })
+        .filter(completion => {
+            if (!completion.feedback) return false;
+            
+            // Fix timezone issue by creating date in local time
+            const [y, m, d] = completion.date.split('-').map(Number);
+            const completionDate = new Date(y, m - 1, d);
+
+            return completionDate >= startDate;
+        })
+        .map(completion => completion.feedback!);
+
+
+        if (allFeedbacks.length === 0) {
             return <ChartWrapper><StatCard title={analyticsResult.title} value="N/A" themeColor={themeColor} /></ChartWrapper>;
         }
-        const totalFocus = sessionsWithFeedback.reduce((sum, item) => sum + (item.feedback?.focusQuality || 0), 0);
-        const avgFocus = (totalFocus / sessionsWithFeedback.length).toFixed(1);
+        const totalFocus = allFeedbacks.reduce((sum, item) => sum + (item.focusQuality || 0), 0);
+        const avgFocus = (totalFocus / allFeedbacks.length).toFixed(1);
         return <ChartWrapper><StatCard title={analyticsResult.title} value={`${avgFocus} / 5`} themeColor={themeColor} /></ChartWrapper>;
       }
       case 'TYPE_BREAKDOWN': {

@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ScheduleItem, ScheduleItemType, SessionStatus, DeepWorkSession, ShallowWorkTask, GoalAnalysisResult } from '../types';
 import { getPreSessionRitual, evaluateSMARTGoal, getSuggestedDuration, RateLimitError } from '../services/geminiService';
@@ -12,13 +13,20 @@ interface SessionSchedulerProps {
 const WEEK_DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, onCancel, schedule }) => {
+  const toLocalYYYYMMDD = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const [taskName, setTaskName] = useState('');
   const [goal, setGoal] = useState('');
   const [duration, setDuration] = useState(90); // Default to a valid deep work duration
   const [ritual, setRitual] = useState<string[] | null>(null);
   const [isFetchingRitual, setIsFetchingRitual] = useState(false);
   const [itemType, setItemType] = useState<ScheduleItemType>(ScheduleItemType.DEEP_WORK);
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(toLocalYYYYMMDD(new Date()));
   const [endDate, setEndDate] = useState('');
   const [startTime, setStartTime] = useState(() => {
       const now = new Date();
@@ -448,7 +456,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                     type="date"
                     value={startDate}
                     onChange={e => setStartDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
+                    min={toLocalYYYYMMDD(new Date())}
                     className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500"
                  />
             </div>

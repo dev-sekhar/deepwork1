@@ -1,11 +1,10 @@
 
-
-
 import React from 'react';
-import { ScheduleItem, ScheduleItemType, DeepWorkSession } from '../types';
+import { ScheduleItem, ScheduleItemType, DeepWorkSession, Feedback } from '../types';
 
 interface TaskReviewModalProps {
   item: ScheduleItem;
+  reviewDate: Date;
   onClose: () => void;
 }
 
@@ -40,8 +39,19 @@ const getTypeStyles = (type: ScheduleItemType) => {
     }
 };
 
-export const TaskReviewModal: React.FC<TaskReviewModalProps> = ({ item, onClose }) => {
-  if (!item.feedback) return null;
+export const TaskReviewModal: React.FC<TaskReviewModalProps> = ({ item, reviewDate, onClose }) => {
+  const toLocalYYYYMMDD = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  const reviewDateStr = toLocalYYYYMMDD(reviewDate);
+  const completion = item.completions?.find(c => c.date === reviewDateStr);
+  
+  if (!completion?.feedback) return null;
+  
+  const { feedback } = completion;
 
   const typeStyleClasses = getTypeStyles(item.type);
   const textColorClass = typeStyleClasses.split(' ').find(c => c.startsWith('text-'));
@@ -75,21 +85,21 @@ export const TaskReviewModal: React.FC<TaskReviewModalProps> = ({ item, onClose 
             )}
             <div className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg">
                 <span className="font-medium text-slate-300">Focus Quality</span>
-                {renderStars(item.feedback.focusQuality)}
+                {renderStars(feedback.focusQuality)}
             </div>
-            {item.feedback.mood && (
+            {feedback.mood && (
                 <div className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg">
                     <span className="font-medium text-slate-300">Mood</span>
                     <div className="flex items-center gap-2">
-                        <span className="text-xl">{moods[item.feedback.mood].emoji}</span>
-                        <span className="text-white">{moods[item.feedback.mood].label}</span>
+                        <span className="text-xl">{moods[feedback.mood].emoji}</span>
+                        <span className="text-white">{moods[feedback.mood].label}</span>
                     </div>
                 </div>
             )}
-             {item.feedback.interruptions && (
+             {feedback.interruptions && (
                 <div className="p-3 bg-slate-700/50 rounded-lg">
                     <p className="font-medium text-slate-300 mb-1">Interruptions</p>
-                    <p className="text-white italic bg-slate-900/50 p-2 rounded">"{item.feedback.interruptions}"</p>
+                    <p className="text-white italic bg-slate-900/50 p-2 rounded">"{feedback.interruptions}"</p>
                 </div>
             )}
             {item.pauses && item.pauses.length > 0 && (

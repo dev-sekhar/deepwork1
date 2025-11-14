@@ -40,6 +40,11 @@ export interface GoalAnalysisResult {
   suggestion?: string;
 }
 
+export interface CompletionRecord {
+  date: string; // YYYY-MM-DD
+  feedback: Feedback | null;
+}
+
 export interface BaseScheduleItem {
   id: string;
   taskName: string;
@@ -50,13 +55,13 @@ export interface BaseScheduleItem {
   repeatOn: number[] | null; // e.g., [1, 3, 5] for Mon, Wed, Fri (0=Sun, 6=Sat)
   isCancelled?: boolean; // For logically deleting one-time tasks
   pauses?: { startDate: string; endDate: string; reason: string }[]; // To track pause periods
+  completions?: CompletionRecord[];
 }
 
 export interface DeepWorkSession extends BaseScheduleItem {
   type: ScheduleItemType.DEEP_WORK;
   goal: string;
   status: SessionStatus;
-  feedback: Feedback | null;
   ritual: string[] | null;
   ritualChecklist: RitualItem[] | null;
   workspaceImageUrl: string | null;
@@ -65,14 +70,12 @@ export interface DeepWorkSession extends BaseScheduleItem {
 export interface ShallowWorkTask extends BaseScheduleItem {
   type: ScheduleItemType.SHALLOW_WORK;
   status: SessionStatus;
-  feedback: Feedback | null;
 }
 
 // Fix: Add AIAssistedWorkSession for the new feature.
 export interface AIAssistedWorkSession extends BaseScheduleItem {
   type: ScheduleItemType.AI_ASSISTED_WORK;
   status: SessionStatus;
-  feedback: Feedback | null;
   chatHistory: ChatMessage[];
 }
 

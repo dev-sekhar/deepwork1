@@ -5,7 +5,7 @@ import { getTasksForDate } from '../App';
 interface HistoryViewProps {
   schedule: ScheduleItem[];
   onBack: () => void;
-  onReview: (id: string) => void;
+  onReview: (id: string, date: Date) => void;
   ListItem: React.FC<any>; // Using 'any' for ListItem to avoid complex prop type drilling
 }
 
@@ -128,6 +128,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ schedule, onBack, onRe
                                 onReview={onReview}
                                 scheduleView="HISTORY"
                                 isActionable={false}
+                                displayDate={selectedDate}
                             />
                         ))
                     ) : (

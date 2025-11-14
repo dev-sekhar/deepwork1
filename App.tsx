@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { ScheduleItem, ScheduleItemType, SessionStatus, Feedback, DeepWorkSession } from './types';
+import { ScheduleItem, ScheduleItemType, SessionStatus, Feedback, DeepWorkSession, CompletionRecord } from './types';
 import { SessionScheduler } from './components/SessionScheduler';
 import { FocusView } from './components/FocusView';
 import { FeedbackModal } from './components/FeedbackModal';
@@ -13,6 +13,14 @@ import { PauseTaskModal } from './components/PauseTaskModal';
 
 type AppView = 'DASHBOARD' | 'SCHEDULING' | 'FOCUS' | 'PRE_SESSION_CHECKLIST' | 'ANALYTICS' | 'HISTORY';
 type ScheduleView = 'TODAY' | 'ONCE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
+
+// A helper to get YYYY-MM-DD from a Date object in the local timezone.
+const toLocalYYYYMMDD = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 
 const scheduleViewOptions: { name: string; value: ScheduleView }[] = [
     { name: 'Today', value: 'TODAY' },
@@ -112,16 +120,19 @@ const getTypeText = (type: ScheduleItemType) => {
     }
 }
 
-const ScheduleListItem: React.FC<{
+interface ScheduleListItemProps {
     item: ScheduleItem;
-    onStart: (id: string) => void;
-    onReview: (id: string) => void;
-    onDelete: (id: string) => void;
-    onPause: (id: string) => void;
-    onUnpause: (id: string) => void;
+    displayDate?: Date;
+    onStart?: (id: string) => void;
+    onReview?: (id: string, date: Date) => void;
+    onDelete?: (id: string) => void;
+    onPause?: (id: string) => void;
+    onUnpause?: (id: string) => void;
     scheduleView: ScheduleView | 'HISTORY';
     isActionable: boolean;
-}> = ({ item, onStart, onReview, onDelete, onPause, onUnpause, scheduleView, isActionable }) => {
+}
+
+const ScheduleListItem: React.FC<ScheduleListItemProps> = ({ item, displayDate, onStart, onReview, onDelete, onPause, onUnpause, scheduleView, isActionable }) => {
     const itemDate = new Date(item.startDate);
     const timeString = itemDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     const dateString = itemDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
@@ -131,6 +142,14 @@ const ScheduleListItem: React.FC<{
 
     const lastPause = item.pauses && item.pauses.length > 0 ? item.pauses[item.pauses.length - 1] : null;
     const isCurrentlyPaused = lastPause ? new Date() >= new Date(lastPause.startDate) && new Date() <= new Date(lastPause.endDate) : false;
+    
+    const isCompleted = useMemo(() => {
+        if (!displayDate || !item.completions) return false;
+        const displayDateStr = toLocalYYYYMMDD(displayDate);
+        return item.completions.some(c => c.date === displayDateStr);
+    }, [item.completions, displayDate]);
+
+    const effectiveStatus = isCompleted ? SessionStatus.COMPLETED : item.status;
 
     return (
         <div className="bg-slate-800 p-4 rounded-lg flex items-start justify-between shadow-md hover:bg-slate-700/50 transition-colors duration-300">
@@ -144,10 +163,10 @@ const ScheduleListItem: React.FC<{
                  <div className="min-w-0">
                      <div className="flex items-center gap-3 flex-wrap">
                         <h3 className={`font-semibold text-lg truncate ${textColorClass}`} title={item.taskName}>{item.taskName}</h3>
-                        {item.status === SessionStatus.COMPLETED && (
+                        {effectiveStatus === SessionStatus.COMPLETED && (
                             <span className="text-xs font-semibold px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full flex-shrink-0">Completed</span>
                         )}
-                         {(item.status === SessionStatus.PENDING && scheduleView === 'HISTORY') && (
+                         {(effectiveStatus === SessionStatus.PENDING && scheduleView === 'HISTORY') && (
                             <span className="text-xs font-semibold px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-full flex-shrink-0">Pending</span>
                         )}
                         {isCurrentlyPaused && (
@@ -174,15 +193,15 @@ const ScheduleListItem: React.FC<{
                 </div>
             </div>
             <div className="flex flex-col items-end gap-2 flex-shrink-0 ml-2">
-                {item.status === SessionStatus.COMPLETED && (
-                     <button onClick={() => onReview(item.id)} className="bg-slate-600 text-white font-bold py-1 px-3 text-sm rounded-md hover:bg-slate-500 transition w-full text-center">
+                {effectiveStatus === SessionStatus.COMPLETED && onReview && displayDate && (
+                     <button onClick={() => onReview(item.id, displayDate)} className="bg-slate-600 text-white font-bold py-1 px-3 text-sm rounded-md hover:bg-slate-500 transition w-full text-center">
                         Review
                     </button>
                 )}
-                {item.status === SessionStatus.PENDING && isActionable && (
+                {effectiveStatus === SessionStatus.PENDING && isActionable && (
                     <>
                         {/* START button shown for Today and One-Time tasks */}
-                        {(scheduleView === 'TODAY' || scheduleView === 'ONCE') && (
+                        {(scheduleView === 'TODAY' || scheduleView === 'ONCE') && onStart && (
                             <button onClick={() => onStart(item.id)} className="bg-green-500 text-white font-bold py-1 px-3 text-sm rounded-md hover:bg-green-600 transition w-full text-center">
                                 Start
                             </button>
@@ -194,13 +213,13 @@ const ScheduleListItem: React.FC<{
                                 {/* PAUSE button only for recurring tasks */}
                                 {item.repeatFrequency !== 'ONCE' && (
                                     isCurrentlyPaused ? (
-                                        <button onClick={() => onUnpause(item.id)} className="bg-blue-500 text-white font-semibold text-xs py-1 px-2 rounded hover:bg-blue-600 transition">Unpause</button>
+                                        onUnpause && <button onClick={() => onUnpause(item.id)} className="bg-blue-500 text-white font-semibold text-xs py-1 px-2 rounded hover:bg-blue-600 transition">Unpause</button>
                                     ) : (
-                                        <button onClick={() => onPause(item.id)} className="bg-slate-600 text-white font-semibold text-xs py-1 px-2 rounded hover:bg-slate-500 transition">Pause</button>
+                                        onPause && <button onClick={() => onPause(item.id)} className="bg-slate-600 text-white font-semibold text-xs py-1 px-2 rounded hover:bg-slate-500 transition">Pause</button>
                                     )
                                 )}
                                 {/* DELETE button for One-time and recurring views */}
-                                <button onClick={() => onDelete(item.id)} className="bg-red-800 text-white font-semibold text-xs py-1 px-2 rounded hover:bg-red-700 transition">Delete</button>
+                                {onDelete && <button onClick={() => onDelete(item.id)} className="bg-red-800 text-white font-semibold text-xs py-1 px-2 rounded hover:bg-red-700 transition">Delete</button>}
                             </div>
                         )}
                     </>
@@ -283,8 +302,8 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>('DASHBOARD');
   const [scheduleView, setScheduleView] = useState<ScheduleView>('TODAY');
   const [activeSession, setActiveSession] = useState<ScheduleItem | null>(null);
-  const [sessionForFeedback, setSessionForFeedback] = useState<ScheduleItem | null>(null);
-  const [taskForReview, setTaskForReview] = useState<ScheduleItem | null>(null);
+  const [sessionForFeedback, setSessionForFeedback] = useState<{item: ScheduleItem, date: Date} | null>(null);
+  const [taskForReview, setTaskForReview] = useState<{item: ScheduleItem, date: Date} | null>(null);
   const [taskToPause, setTaskToPause] = useState<ScheduleItem | null>(null);
 
   const handleAddItem = useCallback((item: ScheduleItem) => {
@@ -304,10 +323,10 @@ const App: React.FC = () => {
     }
   }, [schedule]);
 
-   const handleReviewTask = useCallback((itemId: string) => {
+   const handleReviewTask = useCallback((itemId: string, date: Date) => {
       const itemToReview = schedule.find(s => s.id === itemId);
       if(itemToReview) {
-          setTaskForReview(itemToReview);
+          setTaskForReview({ item: itemToReview, date });
       }
   }, [schedule]);
   
@@ -374,7 +393,7 @@ const App: React.FC = () => {
 
   const handleSessionComplete = useCallback(() => {
     if (activeSession) {
-      setSessionForFeedback(activeSession);
+      setSessionForFeedback({ item: activeSession, date: new Date() });
       setActiveSession(null);
       setCurrentView('DASHBOARD');
     }
@@ -382,12 +401,25 @@ const App: React.FC = () => {
 
   const handleFeedbackSubmit = useCallback((feedback: Feedback) => {
     if (sessionForFeedback) {
-      setSchedule(prev => prev.map(s => 
-        s.id === sessionForFeedback.id 
-        ? { ...s, status: SessionStatus.COMPLETED, feedback } 
-        : s
-      ));
-      setSessionForFeedback(null);
+        const { item: completedItem, date: completionDate } = sessionForFeedback;
+        const completionDateStr = toLocalYYYYMMDD(completionDate);
+
+        setSchedule(prev => prev.map(s => {
+            if (s.id === completedItem.id) {
+                const newCompletion: CompletionRecord = { date: completionDateStr, feedback };
+                const updatedCompletions = [...(s.completions || []), newCompletion];
+
+                // For one-time tasks, also update the main status
+                if (s.repeatFrequency === 'ONCE') {
+                    return { ...s, completions: updatedCompletions, status: SessionStatus.COMPLETED };
+                } else {
+                    // For recurring tasks, just add the completion record
+                    return { ...s, completions: updatedCompletions };
+                }
+            }
+            return s;
+        }));
+        setSessionForFeedback(null);
     }
   }, [sessionForFeedback]);
   
@@ -459,11 +491,12 @@ const App: React.FC = () => {
         return <HistoryView schedule={schedule} onBack={() => setCurrentView('DASHBOARD')} onReview={handleReviewTask} ListItem={ScheduleListItem} />;
       case 'DASHBOARD':
       default:
-        const renderScheduleList = (items: ScheduleItem[]) => {
+        const renderScheduleList = (items: ScheduleItem[], displayDateFunc?: (item: ScheduleItem) => Date) => {
             return items.map(item => (
                 <ScheduleListItem 
                     key={item.id} 
                     item={item} 
+                    displayDate={displayDateFunc ? displayDateFunc(item) : undefined}
                     onStart={handleStartSession} 
                     onReview={handleReviewTask} 
                     onDelete={handleDeleteItem}
@@ -517,7 +550,7 @@ const App: React.FC = () => {
                             <p className="text-center text-slate-400 py-8">No items scheduled for today.</p>
                         ) : (
                             todaysSchedule.map(item => (
-                                <ScheduleListItem key={item.id} item={item} onStart={handleStartSession} onReview={handleReviewTask} onDelete={handleDeleteItem} onPause={handlePauseItem} onUnpause={handleUnpauseItem} scheduleView={scheduleView} isActionable={true} />
+                                <ScheduleListItem key={item.id} item={item} displayDate={new Date()} onStart={handleStartSession} onReview={handleReviewTask} onDelete={handleDeleteItem} onPause={handlePauseItem} onUnpause={handleUnpauseItem} scheduleView={scheduleView} isActionable={true} />
                             ))
                         )}
                     </>
@@ -528,7 +561,7 @@ const App: React.FC = () => {
                         {oneTimeSchedule.length === 0 ? (
                             <p className="text-center text-slate-400 py-8">No one-time tasks scheduled.</p>
                         ) : (
-                            renderScheduleList(oneTimeSchedule)
+                            renderScheduleList(oneTimeSchedule, item => new Date(item.startDate))
                         )}
                     </>
                 )}
@@ -576,12 +609,12 @@ const App: React.FC = () => {
       </main>
       {sessionForFeedback && (
         <FeedbackModal 
-            sessionName={sessionForFeedback.taskName} 
+            sessionName={sessionForFeedback.item.taskName} 
             onSubmit={handleFeedbackSubmit} 
         />
       )}
       {taskForReview && (
-        <TaskReviewModal item={taskForReview} onClose={() => setTaskForReview(null)} />
+        <TaskReviewModal item={taskForReview.item} reviewDate={taskForReview.date} onClose={() => setTaskForReview(null)} />
       )}
       {taskToPause && (
         <PauseTaskModal

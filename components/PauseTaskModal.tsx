@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 
 interface PauseTaskModalProps {
@@ -7,7 +8,14 @@ interface PauseTaskModalProps {
 }
 
 export const PauseTaskModal: React.FC<PauseTaskModalProps> = ({ taskName, onSubmit, onClose }) => {
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const toLocalYYYYMMDD = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const [startDate, setStartDate] = useState(toLocalYYYYMMDD(new Date()));
   const [endDate, setEndDate] = useState('');
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
@@ -41,7 +49,7 @@ export const PauseTaskModal: React.FC<PauseTaskModalProps> = ({ taskName, onSubm
               type="date"
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
-              min={new Date().toISOString().split('T')[0]}
+              min={toLocalYYYYMMDD(new Date())}
               className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-500"
               required
             />
