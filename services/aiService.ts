@@ -69,10 +69,14 @@ export async function parseNaturalLanguageTask(
 
         Guidelines:
         - If a detail is not mentioned, set its value to null.
-        - The current date is ${new Date().toISOString()}. Infer relative dates/times like 'tomorrow', 'next Tuesday at 4pm', 'in 3 hours' etc., based on this.
+        - The current date is ${new Date().toISOString()}.
+        - **IMPORTANT TIME PARSING RULES:**
+          - **Prioritize explicit times.** If the user says "at 4 PM", the time is 16:00. If they say "at 10 AM", the time is 10:00. Do not interpret these as relative durations (e.g., "in 4 hours"). An explicit time always takes precedence.
+          - Use the current date to resolve relative dates like 'tomorrow' or 'next Tuesday'.
+          - For relative times like 'in 3 hours', calculate from the current date.
         - If the task sounds like it requires deep focus (e.g., 'write', 'study', 'code', 'research', 'plan'), default itemType to 'DEEP_WORK'. Otherwise, default to 'SHALLOW_WORK'.
         - If no duration is specified, default to 90 for DEEP_WORK and 30 for SHALLOW_WORK.
-        - Assume the user's working hours are 9am to 5pm. If a time is ambiguous (e.g., "in the afternoon"), pick a reasonable time like 2 PM.
+        - The user's preferred working hours are 9am to 5pm. If a time is ambiguous (e.g., "in the afternoon"), pick a reasonable time like 2 PM. If the user gives an explicit time, you must respect it, even if it's outside these working hours.
     `;
     const schema = {
         type: Type.OBJECT,
