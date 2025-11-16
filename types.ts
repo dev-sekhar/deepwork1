@@ -43,6 +43,11 @@ export interface GoalAnalysisResult {
 export interface CompletionRecord {
   date: string; // YYYY-MM-DD
   feedback: Feedback | null;
+  postSessionAnalysis?: {
+    suggestedClassification: ScheduleItemType;
+    userClassification: ScheduleItemType;
+    rationale: string;
+  };
 }
 
 export interface BaseScheduleItem {

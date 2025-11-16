@@ -1,9 +1,10 @@
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { ScheduleItem, ScheduleItemType, SessionStatus, DeepWorkSession, ShallowWorkTask, GoalAnalysisResult } from '../types';
-import { getPreSessionRitual, evaluateSMARTGoal, getSuggestedDuration, AIServiceError } from '../services/aiService';
-import { SparklesIcon, CheckIcon } from './icons';
+import React, { useState, useCallback } from 'react';
+import { ScheduleItem, ScheduleItemType, SessionStatus, DeepWorkSession, ShallowWorkTask } from '../types';
+import { getTaskSuggestions, AIServiceError, TaskSuggestions } from '../services/aiService';
+import { SparklesIcon, CheckIcon, InformationCircleIcon } from './icons';
 import { AppSettings } from '../services/settingsService';
+import { ClassificationGuideModal } from './ClassificationGuideModal';
 
 interface SessionSchedulerProps {
   onAddItem: (item: ScheduleItem) => void;
@@ -25,8 +26,6 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
   const [taskName, setTaskName] = useState('');
   const [goal, setGoal] = useState('');
   const [duration, setDuration] = useState(90); // Default to a valid deep work duration
-  const [ritual, setRitual] = useState<string[] | null>(null);
-  const [isFetchingRitual, setIsFetchingRitual] = useState(false);
   const [itemType, setItemType] = useState<ScheduleItemType>(ScheduleItemType.DEEP_WORK);
   const [startDate, setStartDate] = useState(toLocalYYYYMMDD(new Date()));
   const [endDate, setEndDate] = useState('');
@@ -38,72 +37,22 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
   const [repeatFrequency, setRepeatFrequency] = useState<'ONCE' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('ONCE');
   const [repeatOn, setRepeatOn] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [isAnalyzingGoal, setIsAnalyzingGoal] = useState(false);
-  const [goalAnalysis, setGoalAnalysis] = useState<GoalAnalysisResult | null>(null);
-  const [isFetchingDuration, setIsFetchingDuration] = useState(false);
-  const [suggestedDuration, setSuggestedDuration] = useState<number | null>(null);
+  
+  const [aiSuggestions, setAiSuggestions] = useState<TaskSuggestions | null>(null);
+  const [isFetchingSuggestions, setIsFetchingSuggestions] = useState(false);
+
   const [aiNotification, setAiNotification] = useState<string | null>(null);
-  const [aiAssistanceFetched, setAiAssistanceFetched] = useState(false);
-
-  const debounceTimeoutRef = useRef<number | null>(null);
-
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+  
   const handleStatusUpdate = useCallback((status: string) => {
     setAiNotification(status);
     setTimeout(() => setAiNotification(null), 4000);
   }, []);
 
-  const fetchAIAssistance = useCallback(async () => {
-    if (!taskName || !goal || !process.env.API_KEY || itemType !== ScheduleItemType.DEEP_WORK) return;
+  const resetSuggestions = () => {
+    setAiSuggestions(null);
+  };
 
-    setIsFetchingRitual(true);
-    setIsAnalyzingGoal(true);
-    setIsFetchingDuration(true);
-    setRitual(null);
-    setGoalAnalysis(null);
-    setSuggestedDuration(null);
-    setAiAssistanceFetched(false);
-
-    try {
-      const [generatedRitual, analysisResult, durationSuggestion] = await Promise.all([
-        getPreSessionRitual(taskName, goal, handleStatusUpdate),
-        evaluateSMARTGoal(taskName, goal, handleStatusUpdate),
-        getSuggestedDuration(taskName, goal, handleStatusUpdate),
-      ]);
-
-      setRitual(generatedRitual);
-      setGoalAnalysis(analysisResult);
-      setSuggestedDuration(durationSuggestion);
-      setAiAssistanceFetched(true);
-    } catch (error: any) {
-      console.error("AI Assistance Error:", error);
-      setError("AI assistance failed. Please try again later.");
-      if (error instanceof AIServiceError) {
-          // You could add more specific error handling here if needed
-      }
-    } finally {
-      setIsFetchingRitual(false);
-      setIsAnalyzingGoal(false);
-      setIsFetchingDuration(false);
-    }
-  }, [taskName, goal, itemType, handleStatusUpdate]);
-
-  useEffect(() => {
-    if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
-    
-    const hasInput = taskName.trim().length > 3 && goal.trim().length > 10;
-    
-    if (hasInput && itemType === ScheduleItemType.DEEP_WORK) {
-      debounceTimeoutRef.current = window.setTimeout(() => {
-        fetchAIAssistance();
-      }, 800);
-    }
-
-    return () => {
-      if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
-    };
-  }, [taskName, goal, itemType, fetchAIAssistance]);
-
-  
   const handleToggleRepeatDay = (dayIndex: number) => {
     setRepeatOn(prev => 
       prev.includes(dayIndex) 
@@ -111,118 +60,115 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
         : [...prev, dayIndex]
     );
   };
+  
+  const handleGetAISuggestions = async () => {
+    if (!taskName || (itemType === ScheduleItemType.DEEP_WORK && !goal)) {
+        setError("Please provide a task name (and goal for Deep Work) before getting suggestions.");
+        return;
+    }
+    setIsFetchingSuggestions(true);
+    setError(null);
+    try {
+        const suggestions = await getTaskSuggestions(
+            taskName,
+            itemType === ScheduleItemType.DEEP_WORK ? goal : null,
+            itemType,
+            handleStatusUpdate
+        );
+        if (suggestions) {
+            setAiSuggestions(suggestions);
+        }
+    } catch (err: any) {
+        setError(err instanceof AIServiceError ? err.message : "AI assistance failed. Please try again later.");
+    } finally {
+        setIsFetchingSuggestions(false);
+    }
+  };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // --- Validation and Submission ---
     if (!taskName || duration < 1) return;
     if (itemType === ScheduleItemType.DEEP_WORK && !goal) {
         setError("A goal is required for Deep Work sessions.");
         return;
     }
-    
+
     const newItemStart = new Date(`${startDate}T${startTime}`);
 
-    // --- Settings Enforcement Validation ---
-    
-    // 1. Holiday Check
+    // Settings Enforcement Validation
     const holiday = settings.holidays.find(h => startDate >= h.startDate && startDate <= h.endDate);
     if (holiday) {
         setError(`Cannot schedule on a holiday: "${holiday.description}".`);
         return;
     }
-
-    // 2. Availability Day & Time Check
     const dayOfWeek = newItemStart.getDay();
     if (repeatFrequency === 'DAILY') {
         setError("Daily tasks are disabled as they would fall on non-working days. Please use a Weekly schedule and select your working days.");
         return;
     }
-
     if (repeatFrequency === 'WEEKLY') {
         if (repeatOn.length === 0) {
             setError("Please select at least one day for a weekly task.");
             return;
         }
-        const nonWorkingDaySelected = repeatOn.some(day => !settings.availability.days.includes(day));
-        if (nonWorkingDaySelected) {
+        if (repeatOn.some(day => !settings.availability.days.includes(day))) {
             setError("A selected day is a non-working day. Please adjust your selection or availability settings.");
             return;
         }
-    } else { // For ONCE and MONTHLY, check the specific start date
+    } else {
         if (!settings.availability.days.includes(dayOfWeek)) {
             const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek];
             setError(`${dayName} is a non-working day. Please pick a different date or adjust your availability settings.`);
             return;
         }
     }
-    
-    // 3. Time check
     const [startHour, startMinute] = settings.availability.startTime.split(':').map(Number);
     const [endHour, endMinute] = settings.availability.endTime.split(':').map(Number);
     const [selectedHour, selectedMinute] = startTime.split(':').map(Number);
-    
     const scheduleStartTotalMinutes = startHour * 60 + startMinute;
     const scheduleEndTotalMinutes = endHour * 60 + endMinute;
     const selectedStartTotalMinutes = selectedHour * 60 + selectedMinute;
-    
     if (selectedStartTotalMinutes < scheduleStartTotalMinutes || selectedStartTotalMinutes > scheduleEndTotalMinutes) {
         setError(`Start time is outside your working hours (${settings.availability.startTime} - ${settings.availability.endTime}).`);
         return;
     }
-    
     if (selectedStartTotalMinutes + duration > scheduleEndTotalMinutes) {
         setError(`Session ends after your working hours (${settings.availability.endTime}). Please shorten the duration or start earlier.`);
         return;
     }
-
-    // --- End Settings Validation ---
-    
     if (newItemStart < new Date()) {
         setError("Cannot schedule tasks in the past. Please select a future date and time.");
         return;
     }
-    
     if (endDate && new Date(endDate) < newItemStart) {
         setError("End date cannot be before the start date.");
         return;
     }
     
+    // Conflict validation
     const newItemEnd = new Date(newItemStart.getTime() + duration * 60 * 1000);
-
-    // --- Conflict validation and suggestion logic ---
     const getEffectiveStartTime = (item: ScheduleItem, date: Date): Date => {
       const itemTime = new Date(item.startDate);
-      const effectiveDate = new Date(date);
-      effectiveDate.setHours(itemTime.getHours(), itemTime.getMinutes(), itemTime.getSeconds(), itemTime.getMilliseconds());
-      return effectiveDate;
+      return new Date(date.getFullYear(), date.getMonth(), date.getDate(), itemTime.getHours(), itemTime.getMinutes());
     };
-    
     const tasksOnSameDay = schedule.filter(item => {
         const itemStartDate = new Date(item.startDate);
         const itemDateOnly = new Date(itemStartDate.getFullYear(), itemStartDate.getMonth(), itemStartDate.getDate());
         const newItemDateOnly = new Date(newItemStart.getFullYear(), newItemStart.getMonth(), newItemStart.getDate());
-        
-        if (item.repeatFrequency === 'ONCE' && itemDateOnly.getTime() !== newItemDateOnly.getTime()) {
-          return false;
-        }
-
+        if (item.repeatFrequency === 'ONCE' && itemDateOnly.getTime() !== newItemDateOnly.getTime()) return false;
         switch (item.repeatFrequency) {
-            case 'ONCE':
-                return itemDateOnly.getTime() === newItemDateOnly.getTime();
-            case 'DAILY':
-                return true;
-            case 'WEEKLY':
-                return item.repeatOn?.includes(dayOfWeek) ?? false;
-            case 'MONTHLY':
-                return itemStartDate.getDate() === newItemStart.getDate();
-            default:
-                return false;
+            case 'ONCE': return itemDateOnly.getTime() === newItemDateOnly.getTime();
+            case 'DAILY': return true;
+            case 'WEEKLY': return item.repeatOn?.includes(dayOfWeek) ?? false;
+            case 'MONTHLY': return itemStartDate.getDate() === newItemStart.getDate();
+            default: return false;
         }
     }).map(item => {
         const start = getEffectiveStartTime(item, newItemStart);
-        const end = new Date(start.getTime() + item.durationMinutes * 60000);
-        return { ...item, effectiveStart: start, effectiveEnd: end };
+        return { ...item, effectiveStart: start, effectiveEnd: new Date(start.getTime() + item.durationMinutes * 60000) };
     }).sort((a, b) => a.effectiveStart.getTime() - b.effectiveStart.getTime());
 
     let initialConflict: { taskName: string; effectiveEnd: Date } | null = null;
@@ -235,77 +181,69 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
 
     if (initialConflict) {
         let proposedStart = initialConflict.effectiveEnd;
-        let slotFound = false;
+        // Safety brake to prevent potential infinite loops in conflict resolution.
+        let safetyBrake = tasksOnSameDay.length + 1;
 
-        while (!slotFound) {
+        while (safetyBrake > 0) {
+            safetyBrake--;
             const proposedEnd = new Date(proposedStart.getTime() + duration * 60000);
-            const conflictingTask = tasksOnSameDay.find(task => 
-                proposedStart < task.effectiveEnd && proposedEnd > task.effectiveStart
-            );
-
+            const conflictingTask = tasksOnSameDay.find(task => proposedStart < task.effectiveEnd && proposedEnd > task.effectiveStart);
             if (conflictingTask) {
                 proposedStart = conflictingTask.effectiveEnd;
             } else {
-                slotFound = true;
+                break; // Found a slot
             }
         }
-        
+
+        if (safetyBrake <= 0) {
+            // The loop terminated because of the safety brake, not because a slot was found.
+            setError("Could not automatically find an available time slot due to multiple conflicts. Please choose a different time manually.");
+            return;
+        }
+
         const suggestionTime = proposedStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
         setError(`Time conflict with "${initialConflict.taskName}". Next available slot is at ${suggestionTime}.`);
         return;
     }
-    // --- End of validation ---
 
+
+    // Add item to schedule
     const fullStartDate = newItemStart.toISOString();
-
     const baseItemData = {
-        id: new Date().toISOString() + Math.random(),
-        taskName,
-        durationMinutes: duration,
-        startDate: fullStartDate,
+        id: new Date().toISOString() + Math.random(), taskName, durationMinutes: duration, startDate: fullStartDate,
         endDate: repeatFrequency !== 'ONCE' && endDate ? new Date(endDate).toISOString() : null,
-        repeatFrequency,
-        repeatOn: repeatFrequency === 'WEEKLY' ? repeatOn.sort((a,b) => a-b) : null,
-        status: SessionStatus.PENDING,
-        feedback: null,
-        isCancelled: false,
-        pauses: [],
+        repeatFrequency, repeatOn: repeatFrequency === 'WEEKLY' ? repeatOn.sort((a,b) => a-b) : null,
+        status: SessionStatus.PENDING, feedback: null, isCancelled: false, pauses: [],
     };
-
     if (itemType === ScheduleItemType.DEEP_WORK) {
+      const ritual = aiSuggestions?.ritual || null;
       const newSession: DeepWorkSession = {
-        ...baseItemData,
-        type: ScheduleItemType.DEEP_WORK,
-        goal,
-        ritual,
+        ...baseItemData, type: ScheduleItemType.DEEP_WORK, goal, ritual,
         ritualChecklist: ritual ? ritual.map(text => ({ text, completed: false })) : null,
-        workspaceImageUrl: null,
-        wasCreatedWithAI: aiAssistanceFetched,
+        workspaceImageUrl: null, wasCreatedWithAI: !!aiSuggestions,
       };
       onAddItem(newSession);
     } else {
-       const newShallowTask: ShallowWorkTask = {
-        ...baseItemData,
-        type: ScheduleItemType.SHALLOW_WORK,
-      };
+       const newShallowTask: ShallowWorkTask = { ...baseItemData, type: ScheduleItemType.SHALLOW_WORK };
       onAddItem(newShallowTask);
     }
   };
 
   const handleItemTypeChange = (newItemType: ScheduleItemType) => {
     setItemType(newItemType);
-    setRitual(null);
-    setGoalAnalysis(null);
-    setSuggestedDuration(null);
-    setAiAssistanceFetched(false);
+    resetSuggestions();
     if (newItemType === ScheduleItemType.DEEP_WORK) {
         setDuration(90); 
     } else {
         setDuration(15);
     }
   };
+  
+  const { goalAnalysis, classificationSuggestion, ritual, suggestedDuration } = aiSuggestions || {};
 
   return (
+    <>
+    {isGuideOpen && <ClassificationGuideModal onClose={() => setIsGuideOpen(false)} />}
     <div className="p-6 bg-slate-800 rounded-lg shadow-lg w-full max-w-md mx-auto animate-fade-in-up">
       {aiNotification && (
           <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-blue-500/80 backdrop-blur-sm text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg animate-fade-in-down z-50">
@@ -316,29 +254,28 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
       <form onSubmit={handleSubmit} className="space-y-6">
 
         <div>
-            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-700 rounded-lg mb-6">
-                <button type="button" onClick={() => handleItemTypeChange(ScheduleItemType.DEEP_WORK)} className={`px-3 py-2 rounded-md text-sm font-semibold transition ${itemType === ScheduleItemType.DEEP_WORK ? 'bg-green-500 text-slate-900' : 'bg-transparent hover:bg-slate-600/50'}`}>
+            <div className="flex items-center justify-center gap-2 p-1 bg-slate-700 rounded-lg mb-2">
+                <button type="button" onClick={() => handleItemTypeChange(ScheduleItemType.DEEP_WORK)} className={`flex-1 px-3 py-2 rounded-md text-sm font-semibold transition ${itemType === ScheduleItemType.DEEP_WORK ? 'bg-green-500 text-slate-900' : 'bg-transparent hover:bg-slate-600/50'}`}>
                     Deep Work
                 </button>
-                 <button type="button" onClick={() => handleItemTypeChange(ScheduleItemType.SHALLOW_WORK)} className={`px-3 py-2 rounded-md text-sm font-semibold transition ${itemType === ScheduleItemType.SHALLOW_WORK ? 'bg-orange-500 text-white' : 'bg-transparent hover:bg-slate-600/50'}`}>
+                 <button type="button" onClick={() => handleItemTypeChange(ScheduleItemType.SHALLOW_WORK)} className={`flex-1 px-3 py-2 rounded-md text-sm font-semibold transition ${itemType === ScheduleItemType.SHALLOW_WORK ? 'bg-orange-500 text-white' : 'bg-transparent hover:bg-slate-600/50'}`}>
                     Shallow Work
                 </button>
             </div>
+            <button type="button" onClick={() => setIsGuideOpen(true)} className="flex items-center justify-center gap-1.5 w-full text-xs text-slate-400 hover:text-primary-accent transition">
+                <InformationCircleIcon className="w-4 h-4" />
+                What's the difference?
+            </button>
         </div>
 
         <div>
-          <label htmlFor="taskName" className="block text-sm font-medium text-slate-300 mb-2">
-            Task
-          </label>
+          <label htmlFor="taskName" className="block text-sm font-medium text-slate-300 mb-2">Task</label>
           <input
             id="taskName"
             type="text"
             value={taskName}
-            onChange={(e) => setTaskName(e.target.value)}
-            placeholder={
-                itemType === ScheduleItemType.DEEP_WORK ? "e.g., Write chapter 3 of novel" 
-                : "e.g., Reply to team emails"
-            }
+            onChange={(e) => { setTaskName(e.target.value); resetSuggestions(); }}
+            placeholder={itemType === ScheduleItemType.DEEP_WORK ? "e.g., Write chapter 3 of novel" : "e.g., Reply to team emails"}
             className={`w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2  transition ${itemType === ScheduleItemType.DEEP_WORK ? 'focus:ring-green-500 focus:border-green-500' : 'focus:ring-orange-500 focus:border-orange-500'}`}
             required
           />
@@ -347,45 +284,66 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
         {itemType === ScheduleItemType.DEEP_WORK && (
           <div className="animate-fade-in space-y-4">
             <div>
-              <label htmlFor="goal" className="block text-sm font-medium text-slate-300 mb-2">
-                Task Goal
-              </label>
+              <label htmlFor="goal" className="block text-sm font-medium text-slate-300 mb-2">Task Goal</label>
               <textarea
                 id="goal"
                 value={goal}
-                onChange={(e) => setGoal(e.target.value)}
+                onChange={(e) => { setGoal(e.target.value); resetSuggestions(); }}
                 placeholder="e.g., Complete a full draft of the introduction and first two paragraphs."
                 className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white placeholder-slate-400 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition"
                 rows={2}
                 required
               />
             </div>
-            
-            {goalAnalysis && !isAnalyzingGoal && (
-                <div className={`p-3 rounded-lg text-sm animate-fade-in-up ${goalAnalysis.isSMART ? 'bg-green-500/10 text-green-300' : 'bg-yellow-500/10'}`}>
-                    <p className={`${goalAnalysis.isSMART ? '' : 'text-yellow-300'}`}>
-                        <strong>Feedback:</strong> {goalAnalysis.feedback}
-                    </p>
-                    {goalAnalysis.suggestion && (
-                        <div className="mt-3 bg-slate-900/30 p-3 rounded-md">
-                            <p className="font-semibold text-yellow-200">Suggestion:</p>
-                            <p className="text-yellow-300 italic">"{goalAnalysis.suggestion}"</p>
-                             <div className="flex gap-2 mt-3">
-                                <button type="button" onClick={() => { setGoal(goalAnalysis.suggestion || goal); setGoalAnalysis(null); }} className="text-xs bg-yellow-600/50 hover:bg-yellow-600/80 text-white font-semibold px-3 py-1 rounded-md">
-                                    Use Suggestion
-                                </button>
-                                <button type="button" onClick={() => setGoalAnalysis(null)} className="text-xs bg-slate-600/50 hover:bg-slate-600/80 text-slate-300 px-3 py-1 rounded-md">
-                                    Keep Mine
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
           </div>
         )}
+        
+        {goalAnalysis && (
+            <div className={`p-3 rounded-lg text-sm animate-fade-in-up ${goalAnalysis.isSMART ? 'bg-green-500/10 text-green-300' : 'bg-yellow-500/10'}`}>
+                <p className={`${goalAnalysis.isSMART ? '' : 'text-yellow-300'}`}>
+                    <strong>Feedback:</strong> {goalAnalysis.feedback}
+                </p>
+                {goalAnalysis.suggestion && (
+                    <div className="mt-3 bg-slate-900/30 p-3 rounded-md">
+                        <p className="font-semibold text-yellow-200">Suggestion:</p>
+                        <p className="text-yellow-300 italic">"{goalAnalysis.suggestion}"</p>
+                         <div className="flex gap-2 mt-3">
+                            <button type="button" onClick={() => { setGoal(goalAnalysis.suggestion || goal); setAiSuggestions(s => s ? {...s, goalAnalysis: null} : null); }} className="text-xs bg-yellow-600/50 hover:bg-yellow-600/80 text-white font-semibold px-3 py-1 rounded-md">
+                                Use Suggestion
+                            </button>
+                            <button type="button" onClick={() => setAiSuggestions(s => s ? {...s, goalAnalysis: null} : null)} className="text-xs bg-slate-600/50 hover:bg-slate-600/80 text-slate-300 px-3 py-1 rounded-md">
+                                Keep Mine
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        )}
 
-        {itemType === ScheduleItemType.DEEP_WORK && ritual && !isFetchingRitual && (
+        {classificationSuggestion && classificationSuggestion.classification !== itemType && (
+            <div className="p-3 rounded-lg text-sm bg-yellow-500/10 text-yellow-300 animate-fade-in-up">
+                <div className="flex items-start gap-3">
+                    <InformationCircleIcon className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
+                    <div>
+                        <p>
+                            <strong>AI Suggestion:</strong> This looks more like a 
+                            <strong className="mx-1">{classificationSuggestion.classification.replace('_', ' ')}</strong> task.
+                        </p>
+                        <p className="text-xs mt-1 text-yellow-400"><em>Rationale: {classificationSuggestion.rationale}</em></p>
+                        <div className="mt-3 flex gap-2">
+                            <button type="button" onClick={() => { handleItemTypeChange(classificationSuggestion.classification); setAiSuggestions(s => s ? {...s, classificationSuggestion: null} : null); }} className="text-xs bg-yellow-600/50 hover:bg-yellow-600/80 text-white font-semibold px-3 py-1 rounded-md">
+                                Switch to {classificationSuggestion.classification.replace('_', ' ')}
+                            </button>
+                            <button type="button" onClick={() => setAiSuggestions(s => s ? {...s, classificationSuggestion: null} : null)} className="text-xs bg-slate-600/50 hover:bg-slate-600/80 text-slate-300 px-3 py-1 rounded-md">
+                                Dismiss
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {itemType === ScheduleItemType.DEEP_WORK && ritual && (
             <div className="animate-fade-in-up space-y-4">
                 <div className="p-4 bg-slate-700/50 rounded-lg space-y-2">
                     <h4 className="font-semibold text-green-400">Your AI-Generated Ritual:</h4>
@@ -401,14 +359,8 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
             </div>
         )}
 
-
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
-            Duration (minutes)
-            {isFetchingDuration && itemType === ScheduleItemType.DEEP_WORK && (
-                <SparklesIcon className="w-4 h-4 text-green-400 animate-spin" />
-            )}
-          </label>
+          <label className="block text-sm font-medium text-slate-300 mb-2">Duration (minutes)</label>
           {itemType === ScheduleItemType.DEEP_WORK ? (
             <div className="space-y-3 animate-fade-in">
                 <div className="grid grid-cols-3 gap-2">
@@ -425,7 +377,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                     </button>
                   ))}
                 </div>
-                 {suggestedDuration && !isFetchingDuration && (
+                 {suggestedDuration && (
                     <div className="p-2 bg-slate-700/50 rounded-lg text-center text-sm animate-fade-in-up">
                       <span className="text-slate-300">
                         ✨ AI Suggestion: <strong className="text-green-400">{suggestedDuration} min</strong>
@@ -536,22 +488,42 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
             </div>
         )}
 
-        <div className="flex justify-end gap-4 pt-4">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-6 py-2 bg-slate-600 text-white rounded-md hover:bg-slate-500 transition"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="px-6 py-2 bg-primary text-white font-semibold rounded-md hover:bg-primary-focus transition"
-          >
-            Add to Schedule
-          </button>
+        <div> {/* Wrapper for all action buttons */}
+            {process.env.API_KEY && (
+                <div className="mb-4 pt-4">
+                    <button
+                        type="button"
+                        onClick={handleGetAISuggestions}
+                        disabled={isFetchingSuggestions}
+                        className="w-full px-6 py-3 bg-violet-600 text-white font-semibold rounded-md hover:bg-violet-700 transition flex items-center justify-center gap-2 disabled:bg-slate-600 disabled:cursor-not-allowed"
+                    >
+                        {isFetchingSuggestions ? (
+                            <> <SparklesIcon className="w-5 h-5 animate-spin" /> Thinking... </>
+                        ) : (
+                            <> <SparklesIcon className="w-5 h-5" /> Get AI Suggestions (Optional) </>
+                        )}
+                    </button>
+                </div>
+            )}
+
+            <div className="flex justify-end gap-4">
+                <button
+                    type="button"
+                    onClick={onCancel}
+                    className="px-6 py-2 bg-slate-600 text-white rounded-md hover:bg-slate-500 transition"
+                >
+                    Cancel
+                </button>
+                <button
+                    type="submit"
+                    className="px-6 py-2 bg-primary text-white font-semibold rounded-md hover:bg-primary-focus transition"
+                >
+                    Add to Schedule
+                </button>
+            </div>
         </div>
       </form>
     </div>
+    </>
   );
 };

@@ -1,6 +1,8 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { ScheduleItem, ScheduleItemType, DeepWorkSession, Feedback } from '../types';
+import { InformationCircleIcon, SparklesIcon } from './icons';
+import { ClassificationGuideModal } from './ClassificationGuideModal';
 
 interface TaskReviewModalProps {
   item: ScheduleItem;
@@ -39,7 +41,11 @@ const getTypeStyles = (type: ScheduleItemType) => {
     }
 };
 
+const getTypeText = (type: ScheduleItemType) => type.replace('_', ' ');
+
 export const TaskReviewModal: React.FC<TaskReviewModalProps> = ({ item, reviewDate, onClose }) => {
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+  
   const toLocalYYYYMMDD = (date: Date): string => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -51,7 +57,7 @@ export const TaskReviewModal: React.FC<TaskReviewModalProps> = ({ item, reviewDa
   
   if (!completion) return null;
   
-  const { feedback } = completion;
+  const { feedback, postSessionAnalysis } = completion;
 
   const typeStyleClasses = getTypeStyles(item.type);
   const textColorClass = typeStyleClasses.split(' ').find(c => c.startsWith('text-'));
@@ -59,6 +65,8 @@ export const TaskReviewModal: React.FC<TaskReviewModalProps> = ({ item, reviewDa
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString();
 
   return (
+    <>
+    {isGuideOpen && <ClassificationGuideModal onClose={() => setIsGuideOpen(false)} />}
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50 animate-fade-in" onClick={onClose}>
       <div className="bg-slate-800 rounded-lg shadow-xl p-8 w-full max-w-md space-y-6 transform animate-fade-in-up" onClick={e => e.stopPropagation()}>
         <div className="text-center">
@@ -72,9 +80,10 @@ export const TaskReviewModal: React.FC<TaskReviewModalProps> = ({ item, reviewDa
         <div className="space-y-4 text-sm max-h-[60vh] overflow-y-auto pr-2">
             <div className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg">
                 <span className="font-medium text-slate-300">Type</span>
-                 <span className={`text-xs font-bold px-2 py-1 rounded-full ${getTypeStyles(item.type)}`}>
-                    {item.type.replace('_', ' ')}
-                 </span>
+                 <button onClick={() => setIsGuideOpen(true)} className={`text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1.5 ${getTypeStyles(item.type)}`}>
+                    {getTypeText(item.type)}
+                    <InformationCircleIcon className="w-4 h-4" />
+                 </button>
             </div>
              <div className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg">
                 <span className="font-medium text-slate-300">Duration</span>
@@ -115,6 +124,36 @@ export const TaskReviewModal: React.FC<TaskReviewModalProps> = ({ item, reviewDa
                 </div>
             )}
 
+            {postSessionAnalysis && (
+                 <div className="p-3 bg-slate-900/50 rounded-lg animate-fade-in">
+                    <p className="font-medium text-slate-300 mb-2 flex items-center gap-2">
+                        <SparklesIcon className="w-5 h-5 text-violet-400" />
+                        Post-Session AI Analysis
+                    </p>
+                    <div className="space-y-2 text-sm">
+                        <div className="flex justify-between items-center">
+                            <span className="text-slate-400">Your Classification:</span>
+                            <span className="font-semibold text-white px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: getTypeStyles(postSessionAnalysis.userClassification).split(' ')[1] }}>
+                                {getTypeText(postSessionAnalysis.userClassification)}
+                            </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="text-slate-400">AI Suggestion:</span>
+                            <span className={`font-semibold px-2 py-0.5 rounded-full text-xs ${
+                                postSessionAnalysis.suggestedClassification === postSessionAnalysis.userClassification 
+                                ? 'text-white' 
+                                : 'text-yellow-900 bg-yellow-400'
+                            }`}
+                            style={postSessionAnalysis.suggestedClassification === postSessionAnalysis.userClassification ? { backgroundColor: getTypeStyles(postSessionAnalysis.suggestedClassification).split(' ')[1]} : {}}
+                            >
+                                {getTypeText(postSessionAnalysis.suggestedClassification)}
+                            </span>
+                        </div>
+                        <p className="text-slate-400 pt-1 italic"><strong>Rationale:</strong> "{postSessionAnalysis.rationale}"</p>
+                    </div>
+                </div>
+            )}
+
             {item.pauses && item.pauses.length > 0 && (
                 <div className="p-3 bg-slate-700/50 rounded-lg">
                     <p className="font-medium text-slate-300 mb-2">Pause History</p>
@@ -137,5 +176,6 @@ export const TaskReviewModal: React.FC<TaskReviewModalProps> = ({ item, reviewDa
         </button>
       </div>
     </div>
+    </>
   );
 };

@@ -6,12 +6,16 @@ import { FocusView } from './components/FocusView';
 import { FeedbackModal } from './components/FeedbackModal';
 import { PreSessionChecklist } from './components/PreSessionChecklist';
 import { TaskReviewModal } from './components/TaskReviewModal';
-import { PlusIcon, ChartBarIcon, CalendarIcon, UserIcon, SparklesIcon, Cog6ToothIcon } from './components/icons';
+import { PlusIcon, ChartBarIcon, CalendarIcon, UserIcon, SparklesIcon, SettingsIcon, LogsIcon, MicrophoneIcon } from './components/icons';
 import { AnalyticsView } from './components/analytics/AnalyticsView';
 import { HistoryView } from './components/HistoryView';
 import { PauseTaskModal } from './components/PauseTaskModal';
 import { SettingsModal } from './components/SettingsModal';
 import { getSettings, saveSettings, AppSettings } from './services/settingsService';
+import { evaluateTaskClassification } from './services/aiService';
+import { LogViewer } from './components/LogViewer';
+import { logInfo, logError } from './services/logService';
+import { VoiceAssistantModal } from './components/VoiceAssistantModal';
 
 
 type AppView = 'DASHBOARD' | 'SCHEDULING' | 'FOCUS' | 'PRE_SESSION_CHECKLIST' | 'ANALYTICS' | 'HISTORY';
@@ -35,13 +39,16 @@ const scheduleViewOptions: { name: string; value: ScheduleView }[] = [
 ];
 
 
-const Header = ({ onOpenSettings }: { onOpenSettings: () => void; }) => (
+const Header = ({ onOpenSettings, onOpenLogs }: { onOpenSettings: () => void; onOpenLogs: () => void; }) => (
     <header className="p-4 text-center relative">
         <h1 className="text-3xl font-bold text-primary-accent tracking-wider">Deep Work</h1>
         <p className="text-slate-400">Your assistant for sustained focus.</p>
         <div className="absolute top-4 right-4 flex items-center gap-2">
-            <button onClick={onOpenSettings} className="p-2 text-slate-400 hover:text-white transition-colors" aria-label="Settings">
-                <Cog6ToothIcon className="w-6 h-6" />
+             <button onClick={onOpenLogs} className="p-2 text-slate-400 hover:text-primary-accent transition-colors" aria-label="Developer Logs">
+                <LogsIcon className="w-6 h-6" />
+            </button>
+            <button onClick={onOpenSettings} className="p-2 text-slate-400 hover:text-primary-accent transition-colors" aria-label="Settings">
+                <SettingsIcon className="w-6 h-6" />
             </button>
         </div>
     </header>
@@ -327,6 +334,8 @@ const App: React.FC = () => {
   const [taskForReview, setTaskForReview] = useState<{item: ScheduleItem, date: Date} | null>(null);
   const [taskToPause, setTaskToPause] = useState<ScheduleItem | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
+  const [isVoiceAssistantOpen, setIsVoiceAssistantOpen] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(getSettings());
   
   useEffect(() => {
@@ -340,19 +349,24 @@ const App: React.FC = () => {
   };
 
   const handleAddItem = useCallback((item: ScheduleItem) => {
+    logInfo('Adding new schedule item', { taskName: item.taskName, type: item.type, duration: item.durationMinutes });
     setSchedule(prev => [...prev, item]);
     setCurrentView('DASHBOARD');
+    setIsVoiceAssistantOpen(false);
   }, []);
 
   const handleStartSession = useCallback((sessionId: string) => {
     const sessionToStart = schedule.find(s => s.id === sessionId);
     if (sessionToStart) {
+        logInfo('Starting session', { id: sessionId, taskName: sessionToStart.taskName });
         setActiveSession(sessionToStart);
         if (sessionToStart.type === ScheduleItemType.DEEP_WORK) {
             setCurrentView('PRE_SESSION_CHECKLIST');
         } else {
             setCurrentView('FOCUS');
         }
+    } else {
+        logError('Attempted to start a non-existent session', { sessionId });
     }
   }, [schedule]);
 
@@ -366,6 +380,7 @@ const App: React.FC = () => {
   const handleDeleteItem = useCallback((itemId: string) => {
       setSchedule(prev => prev.map(item => {
           if (item.id === itemId) {
+              logInfo('Deleting item', { id: itemId, taskName: item.taskName, type: item.repeatFrequency });
               if (item.repeatFrequency === 'ONCE') {
                   return { ...item, isCancelled: true };
               } else {
@@ -387,6 +402,7 @@ const App: React.FC = () => {
   const handleUnpauseItem = useCallback((itemId: string) => {
       setSchedule(prev => prev.map(item => {
           if (item.id === itemId && item.pauses && item.pauses.length > 0) {
+              logInfo('Unpausing item', { id: itemId, taskName: item.taskName });
               const newPauses = [...item.pauses];
               const lastPause = newPauses[newPauses.length - 1];
               // End the pause effective immediately, if it was supposed to end in the future
@@ -401,6 +417,7 @@ const App: React.FC = () => {
   
   const handlePauseSubmit = useCallback((pauseData: { startDate: string; endDate: string; reason: string }) => {
       if (taskToPause) {
+          logInfo('Pausing item with date range', { id: taskToPause.id, taskName: taskToPause.taskName, pauseData });
           setSchedule(prev => prev.map(item => {
               if (item.id === taskToPause.id) {
                   const newPauses = [...(item.pauses || []), pauseData];
@@ -420,12 +437,14 @@ const App: React.FC = () => {
 
   const handleChecklistComplete = useCallback(() => {
     if (activeSession) {
+      logInfo('Pre-session checklist complete, starting focus view.', { id: activeSession.id });
       setCurrentView('FOCUS');
     }
   }, [activeSession]);
 
   const handleSessionComplete = useCallback(() => {
     if (activeSession) {
+      logInfo('Completing session', { id: activeSession.id, taskName: activeSession.taskName, type: activeSession.type });
       if (activeSession.type === ScheduleItemType.SHALLOW_WORK) {
         // For shallow tasks, bypass the feedback modal and mark as complete immediately.
         const completionDate = new Date();
@@ -457,21 +476,38 @@ const App: React.FC = () => {
     }
   }, [activeSession]);
 
-  const handleFeedbackSubmit = useCallback((feedback: Feedback) => {
+  const handleFeedbackSubmit = useCallback(async (feedback: Feedback) => {
     if (sessionForFeedback) {
         const { item: completedItem, date: completionDate } = sessionForFeedback;
         const completionDateStr = toLocalYYYYMMDD(completionDate);
+        logInfo('Submitting feedback for session', { id: completedItem.id, taskName: completedItem.taskName, feedback });
+
+        // Run post-session analysis
+        const analysis = await evaluateTaskClassification(
+            completedItem.taskName,
+            (completedItem as DeepWorkSession).goal || null,
+            feedback,
+            () => {} // Silent status update
+        );
 
         setSchedule(prev => prev.map(s => {
             if (s.id === completedItem.id) {
-                const newCompletion: CompletionRecord = { date: completionDateStr, feedback };
-                const updatedCompletions = [...(s.completions || []), newCompletion];
+                const newCompletion: CompletionRecord = { 
+                    date: completionDateStr, 
+                    feedback,
+                    postSessionAnalysis: analysis ? {
+                        suggestedClassification: analysis.classification,
+                        userClassification: completedItem.type,
+                        rationale: analysis.rationale,
+                    } : undefined,
+                };
+                
+                const existingCompletions = s.completions || [];
+                const updatedCompletions = [...existingCompletions.filter(c => c.date !== completionDateStr), newCompletion];
 
-                // For one-time tasks, also update the main status
                 if (s.repeatFrequency === 'ONCE') {
                     return { ...s, completions: updatedCompletions, status: SessionStatus.COMPLETED };
                 } else {
-                    // For recurring tasks, just add the completion record
                     return { ...s, completions: updatedCompletions };
                 }
             }
@@ -575,13 +611,21 @@ const App: React.FC = () => {
                 </div>
             )}
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <button
                 onClick={() => setCurrentView('SCHEDULING')}
                 className="w-full flex items-center justify-center gap-2 bg-primary text-white font-bold py-3 px-4 rounded-lg hover:bg-primary-focus transition shadow-lg"
                 >
                 <PlusIcon className="w-6 h-6" />
                 Schedule
+                </button>
+                 <button
+                onClick={() => setIsVoiceAssistantOpen(true)}
+                disabled={!process.env.API_KEY}
+                className="w-full flex items-center justify-center gap-2 bg-slate-700 text-white font-bold py-3 px-4 rounded-lg hover:bg-slate-600 transition shadow-lg disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed"
+                >
+                <MicrophoneIcon className="w-6 h-6" />
+                Voice
                 </button>
                  <button
                 onClick={() => setCurrentView('ANALYTICS')}
@@ -668,7 +712,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans flex flex-col">
-      <Header onOpenSettings={() => setIsSettingsOpen(true)} />
+      <Header onOpenSettings={() => setIsSettingsOpen(true)} onOpenLogs={() => setIsLogViewerOpen(true)} />
       <main className="flex-grow flex justify-center items-start py-4">
         {renderView()}
       </main>
@@ -693,6 +737,15 @@ const App: React.FC = () => {
             currentSettings={settings}
             onClose={() => setIsSettingsOpen(false)}
             onSave={handleSaveSettings}
+        />
+      )}
+      {isLogViewerOpen && (
+        <LogViewer onClose={() => setIsLogViewerOpen(false)} />
+      )}
+      {isVoiceAssistantOpen && (
+        <VoiceAssistantModal
+          onClose={() => setIsVoiceAssistantOpen(false)}
+          onTaskCreate={handleAddItem}
         />
       )}
       <style>{`
