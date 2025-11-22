@@ -1,6 +1,6 @@
 
 
-
+export type WeekDay = 'Sun' | 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat';
 
 export enum SessionStatus {
   PENDING = 'PENDING',

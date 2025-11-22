@@ -7,6 +7,16 @@ export interface Holiday {
     endDate: string; // YYYY-MM-DD
 }
 
+export interface AIPreferences {
+    enabled: boolean; // Master toggle
+    features: {
+        taskSuggestions: boolean;
+        goalAnalysis: boolean;
+        ritualGeneration: boolean;
+        classification: boolean;
+    }
+}
+
 export interface AppSettings {
     availability: {
         days: number[]; // 0=Sun, 1=Mon, ..., 6=Sat
@@ -16,6 +26,7 @@ export interface AppSettings {
     holidays: Holiday[];
     theme: Theme;
     aiPersonalization: string;
+    aiPreferences: AIPreferences;
 }
 
 const SETTINGS_KEY = 'deepWorkAppSettings';
@@ -29,6 +40,15 @@ const defaultSettings: AppSettings = {
     holidays: [],
     theme: 'cyan',
     aiPersonalization: 'Be a supportive and encouraging productivity coach.',
+    aiPreferences: {
+        enabled: true,
+        features: {
+            taskSuggestions: true,
+            goalAnalysis: true,
+            ritualGeneration: true,
+            classification: true,
+        }
+    }
 };
 
 export const getSettings = (): AppSettings => {

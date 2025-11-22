@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { ScheduleItem, ScheduleItemType, SessionStatus, DeepWorkSession, ShallowWorkTask } from '../types';
 import { parseNaturalLanguageTask, getTaskSuggestions, AIServiceError, TaskSuggestions } from '../services/aiService';
 import { logInfo, logError, logWarn } from '../services/logService';
+import { getSettings } from '../services/settingsService';
 
 type AssistantState = 'IDLE' | 'LISTENING' | 'THINKING' | 'SPEAKING' | 'ERROR';
 type ConversationTurn = { speaker: 'user' | 'assistant', text: string };
@@ -27,7 +28,7 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
   const suggestionsRef = useRef<TaskSuggestions | null>(null);
   const recognitionRef = useRef<any | null>(null);
   const errorRetryCount = useRef(0);
-  
+
   // New robust speech synthesis queueing system
   const speechQueueRef = useRef<string[]>([]);
   const isSpeakingRef = useRef<boolean>(false);
@@ -36,7 +37,7 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
   const addToConversation = useCallback((turn: ConversationTurn) => {
     setConversation(prev => [...prev, turn]);
   }, []);
-  
+
   const processSpeechQueue = useCallback(() => {
     if (isSpeakingRef.current || !isSpeechSupported) {
       return;
@@ -59,26 +60,26 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
     const text = speechQueueRef.current.shift()!;
     const utterance = new SpeechSynthesisUtterance(text);
     let watchdog: number | null = null;
-    
+
     const cleanupAndContinue = (error?: any) => {
       if (watchdog) clearTimeout(watchdog);
       if (!isSpeakingRef.current) return; // Avoid double execution
-      
+
       isSpeakingRef.current = false;
       if (error) {
         logError('Speech synthesis utterance error', error);
       }
-      
+
       // Use a short timeout to allow the speech engine to reset before the next call
       setTimeout(processSpeechQueue, 100);
     };
 
     utterance.onend = () => cleanupAndContinue();
     utterance.onerror = (e) => cleanupAndContinue(e);
-    
+
     watchdog = window.setTimeout(() => {
-        logWarn("Speech synthesis watchdog triggered. Cancelling speech.");
-        window.speechSynthesis.cancel(); // This should trigger onend or onerror
+      logWarn("Speech synthesis watchdog triggered. Cancelling speech.");
+      window.speechSynthesis.cancel(); // This should trigger onend or onerror
     }, 10000);
 
     try {
@@ -107,10 +108,10 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
 
     // Add all to conversation immediately for better UX
     texts.forEach(text => addToConversation({ speaker: 'assistant', text }));
-    
+
     speechQueueRef.current = [...speechQueueRef.current, ...texts];
     onSpeechEndCallbackRef.current = onEndCallback || null;
-    
+
     processSpeechQueue();
   }, [addToConversation, processSpeechQueue]);
 
@@ -118,13 +119,13 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
     if (!isSpeechSupported || !recognitionRef.current) {
       return;
     }
-    
+
     // Stop any currently speaking utterances and clear the queue before listening.
     window.speechSynthesis.cancel();
     speechQueueRef.current = [];
     isSpeakingRef.current = false;
     onSpeechEndCallbackRef.current = null;
-    
+
     try {
       setAssistantState('LISTENING');
       recognitionRef.current.start();
@@ -146,21 +147,21 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
     const { classificationSuggestion, goalAnalysis, suggestedDuration } = suggestions;
 
     if (classificationSuggestion && classificationSuggestion.classification !== taskDetailsRef.current.type) {
-        speak(`Based on your task, I think this might be better classified as ${classificationSuggestion.classification.replace('_', ' ')} because ${classificationSuggestion.rationale}. Would you like to switch?`, () => listen());
-        return;
+      speak(`Based on your task, I think this might be better classified as ${classificationSuggestion.classification.replace('_', ' ')} because ${classificationSuggestion.rationale}. Would you like to switch?`, () => listen());
+      return;
     }
     if (goalAnalysis && !goalAnalysis.isSMART && goalAnalysis.suggestion) {
-        speak(`I have a suggestion to make your goal more specific: "${goalAnalysis.suggestion}". Would you like to use this goal instead?`, () => listen());
-        return;
+      speak(`I have a suggestion to make your goal more specific: "${goalAnalysis.suggestion}". Would you like to use this goal instead?`, () => listen());
+      return;
     }
     if (suggestedDuration && suggestedDuration !== taskDetailsRef.current.durationMinutes) {
-        speak(`I recommend a duration of ${suggestedDuration} minutes for this task. Would you like to change it?`, () => listen());
-        return;
+      speak(`I recommend a duration of ${suggestedDuration} minutes for this task. Would you like to change it?`, () => listen());
+      return;
     }
 
     setStep('CONFIRMING_TASK');
   }, [speak, listen]);
-  
+
   // Main conversation flow logic
   useEffect(() => {
     if (transcript !== null) {
@@ -203,7 +204,7 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
                   taskDetailsRef.current.durationMinutes = 90;
                 } else if (text.toLowerCase().includes('shallow')) {
                   taskDetailsRef.current.type = ScheduleItemType.SHALLOW_WORK;
-                   taskDetailsRef.current.durationMinutes = 30;
+                  taskDetailsRef.current.durationMinutes = 30;
                 } else {
                   speak("I didn't quite catch that. Is it a deep work or shallow work task?", () => listen());
                   return;
@@ -213,13 +214,13 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
               } else if (!startDate) {
                 const parsedInfo = await parseNaturalLanguageTask(text, (status) => logInfo(status));
                 if (parsedInfo?.startDate) {
-                    taskDetailsRef.current.startDate = parsedInfo.startDate;
+                  taskDetailsRef.current.startDate = parsedInfo.startDate;
                 } else {
-                    speak("I had trouble understanding that date. Could you please say it again, for example 'tomorrow at 3pm'?", () => listen());
-                    return;
+                  speak("I had trouble understanding that date. Could you please say it again, for example 'tomorrow at 3pm'?", () => listen());
+                  return;
                 }
                 if (parsedInfo?.durationMinutes) {
-                    taskDetailsRef.current.durationMinutes = parsedInfo.durationMinutes;
+                  taskDetailsRef.current.durationMinutes = parsedInfo.durationMinutes;
                 }
               }
               setStep('FILLING_DETAILS');
@@ -232,7 +233,7 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
                 break;
               }
               const { classificationSuggestion, goalAnalysis, suggestedDuration } = suggestions;
-              
+
               if (classificationSuggestion && classificationSuggestion.classification !== taskDetailsRef.current.type) {
                 if (isAffirmative) taskDetailsRef.current.type = classificationSuggestion.classification;
                 suggestionsRef.current!.classificationSuggestion = null;
@@ -257,10 +258,10 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
             case 'AWAITING_CORRECTION': {
               const parsedChanges = await parseNaturalLanguageTask(text, (status) => logInfo(status));
               Object.keys(parsedChanges).forEach(key => {
-                  const parsedKey = key as keyof typeof parsedChanges;
-                  if (parsedChanges[parsedKey] !== null) {
-                      (taskDetailsRef.current as any)[parsedKey] = parsedChanges[parsedKey];
-                  }
+                const parsedKey = key as keyof typeof parsedChanges;
+                if (parsedChanges[parsedKey] !== null) {
+                  (taskDetailsRef.current as any)[parsedKey] = parsedChanges[parsedKey];
+                }
               });
               setStep('CONFIRMING_TASK');
               break;
@@ -283,109 +284,117 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
     if (assistantState !== 'IDLE' && assistantState !== 'THINKING') return;
 
     const runMainFlow = async () => {
-        switch(step) {
-            case 'GREETING':
-                speak("How can I help you schedule your day?", () => listen());
-                setStep('AWAITING_TASK');
-                break;
-            case 'FILLING_DETAILS': {
-                const { taskName, type, startDate } = taskDetailsRef.current;
-                if (!taskName) { speak("What would you like to call this task?", () => listen()); return; }
-                if (!type) { speak("Is this a deep work or shallow work task?", () => listen()); return; }
-                if (type === ScheduleItemType.DEEP_WORK && !(taskDetailsRef.current as Partial<DeepWorkSession>).goal) { speak("What's the primary goal for this session?", () => listen()); return; }
-                if (!startDate) { speak("When should I schedule this for?", () => listen()); return; }
-                
-                setStep('GETTING_SUGGESTIONS');
-                break;
-            }
-            case 'GETTING_SUGGESTIONS':
-                speak("Okay, I have the details. Let me check for suggestions.", () => {
-                    setAssistantState('THINKING');
-                    (async () => {
-                        try {
-                            const suggestions = await getTaskSuggestions(
-                                taskDetailsRef.current.taskName!,
-                                (taskDetailsRef.current as DeepWorkSession).goal || null,
-                                taskDetailsRef.current.type!,
-                                (status) => logInfo(status)
-                            );
-                            suggestionsRef.current = suggestions;
-                            (taskDetailsRef.current as DeepWorkSession).ritual = suggestions?.ritual || null;
-                            (taskDetailsRef.current as DeepWorkSession).wasCreatedWithAI = true;
+      switch (step) {
+        case 'GREETING':
+          speak("How can I help you schedule your day?", () => listen());
+          setStep('AWAITING_TASK');
+          break;
+        case 'FILLING_DETAILS': {
+          const { taskName, type, startDate } = taskDetailsRef.current;
+          if (!taskName) { speak("What would you like to call this task?", () => listen()); return; }
+          if (!type) { speak("Is this a deep work or shallow work task?", () => listen()); return; }
+          if (type === ScheduleItemType.DEEP_WORK && !(taskDetailsRef.current as Partial<DeepWorkSession>).goal) { speak("What's the primary goal for this session?", () => listen()); return; }
+          if (!startDate) { speak("When should I schedule this for?", () => listen()); return; }
 
-                            setStep('PROCESSING_SUGGESTIONS');
-                            setAssistantState('IDLE');
-                        } catch (e) {
-                             logError('Failed to get AI suggestions via voice', e);
-                             speak("I couldn't get AI suggestions, but I can still schedule the task.", () => {
-                                setStep('CONFIRMING_TASK');
-                                setAssistantState('IDLE');
-                             });
-                        }
-                    })();
-                });
-                break;
-            case 'PROCESSING_SUGGESTIONS':
-                processSuggestions();
-                break;
-            case 'CONFIRMING_TASK': {
-                const { taskName, type, durationMinutes, startDate } = taskDetailsRef.current;
-                const date = new Date(startDate!);
-                const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const dateString = date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
-                
-                const confirmationMessages = [
-                    `Alright, I'm ready to schedule a ${type?.replace('_', ' ')} session.`,
-                    `You want to work on "${taskName}" for ${durationMinutes} minutes.`,
-                    `I have it scheduled for ${dateString} at ${timeString}.`,
-                    "Is that all correct?"
-                ];
-                speak(confirmationMessages, () => listen());
-                break;
-            }
-            case 'AWAITING_CORRECTION': {
-                speak("Okay, what would you like to change?", () => listen());
-                break;
-            }
-            case 'FINALIZING': {
-                const task = taskDetailsRef.current;
-                const baseItemData = {
-                    id: new Date().toISOString() + Math.random(),
-                    taskName: task.taskName!,
-                    durationMinutes: task.durationMinutes!,
-                    startDate: task.startDate!,
-                    endDate: null,
-                    repeatFrequency: 'ONCE' as const,
-                    repeatOn: null,
-                    status: SessionStatus.PENDING,
-                    pauses: [],
-                    completions: [],
-                };
-                if (task.type === ScheduleItemType.DEEP_WORK) {
-                    const newSession: DeepWorkSession = {
-                        ...baseItemData,
-                        type: ScheduleItemType.DEEP_WORK,
-                        goal: (task as DeepWorkSession).goal!,
-                        ritual: (task as DeepWorkSession).ritual || null,
-                        ritualChecklist: (task as DeepWorkSession).ritual ? (task as DeepWorkSession).ritual!.map(text => ({ text, completed: false })) : null,
-                        workspaceImageUrl: null,
-                        wasCreatedWithAI: true,
-                    };
-                    onTaskCreate(newSession);
-                } else {
-                    const newShallowTask: ShallowWorkTask = { ...baseItemData, type: ScheduleItemType.SHALLOW_WORK };
-                    onTaskCreate(newShallowTask);
-                }
-                speak("Great! I've added it to your schedule.", onClose);
-                break;
-            }
-            default:
-              break;
+          setStep('GETTING_SUGGESTIONS');
+          break;
         }
+        case 'GETTING_SUGGESTIONS':
+          const settings = getSettings();
+          if (!settings.aiPreferences.enabled || !settings.aiPreferences.features.taskSuggestions) {
+            speak("AI suggestions are currently disabled in settings. I'll skip that step.", () => {
+              setStep('CONFIRMING_TASK');
+            });
+            break;
+          }
+
+          speak("Okay, I have the details. Let me check for suggestions.", () => {
+            setAssistantState('THINKING');
+            (async () => {
+              try {
+                const suggestions = await getTaskSuggestions(
+                  taskDetailsRef.current.taskName!,
+                  (taskDetailsRef.current as DeepWorkSession).goal || null,
+                  taskDetailsRef.current.type!,
+                  (status) => logInfo(status)
+                );
+                suggestionsRef.current = suggestions;
+                (taskDetailsRef.current as DeepWorkSession).ritual = suggestions?.ritual || null;
+                (taskDetailsRef.current as DeepWorkSession).wasCreatedWithAI = true;
+
+                setStep('PROCESSING_SUGGESTIONS');
+                setAssistantState('IDLE');
+              } catch (e) {
+                logError('Failed to get AI suggestions via voice', e);
+                speak("I couldn't get AI suggestions, but I can still schedule the task.", () => {
+                  setStep('CONFIRMING_TASK');
+                  setAssistantState('IDLE');
+                });
+              }
+            })();
+          });
+          break;
+        case 'PROCESSING_SUGGESTIONS':
+          processSuggestions();
+          break;
+        case 'CONFIRMING_TASK': {
+          const { taskName, type, durationMinutes, startDate } = taskDetailsRef.current;
+          const date = new Date(startDate!);
+          const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const dateString = date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+
+          const confirmationMessages = [
+            `Alright, I'm ready to schedule a ${type?.replace('_', ' ')} session.`,
+            `You want to work on "${taskName}" for ${durationMinutes} minutes.`,
+            `I have it scheduled for ${dateString} at ${timeString}.`,
+            "Is that all correct?"
+          ];
+          speak(confirmationMessages, () => listen());
+          break;
+        }
+        case 'AWAITING_CORRECTION': {
+          speak("Okay, what would you like to change?", () => listen());
+          break;
+        }
+        case 'FINALIZING': {
+          const task = taskDetailsRef.current;
+          const baseItemData = {
+            id: new Date().toISOString() + Math.random(),
+            taskName: task.taskName!,
+            durationMinutes: task.durationMinutes!,
+            startDate: task.startDate!,
+            endDate: null,
+            repeatFrequency: 'ONCE' as const,
+            repeatOn: null,
+            status: SessionStatus.PENDING,
+            pauses: [],
+            completions: [],
+          };
+          if (task.type === ScheduleItemType.DEEP_WORK) {
+            const newSession: DeepWorkSession = {
+              ...baseItemData,
+              type: ScheduleItemType.DEEP_WORK,
+              goal: (task as DeepWorkSession).goal!,
+              ritual: (task as DeepWorkSession).ritual || null,
+              ritualChecklist: (task as DeepWorkSession).ritual ? (task as DeepWorkSession).ritual!.map(text => ({ text, completed: false })) : null,
+              workspaceImageUrl: null,
+              wasCreatedWithAI: true,
+            };
+            onTaskCreate(newSession);
+          } else {
+            const newShallowTask: ShallowWorkTask = { ...baseItemData, type: ScheduleItemType.SHALLOW_WORK };
+            onTaskCreate(newShallowTask);
+          }
+          speak("Great! I've added it to your schedule.", onClose);
+          break;
+        }
+        default:
+          break;
+      }
     };
     runMainFlow();
   }, [step, assistantState, transcript, speak, listen, processSuggestions, onTaskCreate, onClose, addToConversation]);
-  
+
   useEffect(() => {
     if (assistantState === 'ERROR') {
       if (errorRetryCount.current >= 2) {
@@ -394,9 +403,9 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
         const closeTimeout = setTimeout(onClose, 4000);
         return () => clearTimeout(closeTimeout);
       }
-      
+
       errorRetryCount.current += 1;
-      
+
       let spokenErrorMessage = "I'm sorry, I ran into a problem. Let me try that again.";
       let retryDelay = 1000;
 
@@ -406,7 +415,7 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
       }
 
       const recoveryTimeout = setTimeout(() => {
-          speak(spokenErrorMessage, () => setAssistantState('IDLE'));
+        speak(spokenErrorMessage, () => setAssistantState('IDLE'));
       }, retryDelay);
       return () => clearTimeout(recoveryTimeout);
     } else {
@@ -415,7 +424,7 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
         errorRetryCount.current = 0;
       }
       if (lastErrorType !== null) {
-          setLastErrorType(null);
+        setLastErrorType(null);
       }
       if (errorMessage !== null) {
         setErrorMessage(null);
@@ -424,6 +433,12 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
   }, [assistantState, lastErrorType, speak, onClose, errorMessage]);
 
   const startAssistant = useCallback(() => {
+    const settings = getSettings();
+    if (!settings.aiPreferences.enabled) {
+      speak("The AI assistant is currently disabled in settings.", onClose);
+      return;
+    }
+
     if (!isSpeechSupported) {
       speak("Sorry, your browser doesn't support the voice features.", onClose);
       return;
@@ -439,7 +454,7 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
         const transcriptText = event.results[event.results.length - 1][0].transcript;
         setTranscript(transcriptText);
       };
-      
+
       recognition.onstart = () => {
         if (assistantState !== 'SPEAKING') setAssistantState('LISTENING');
       };
@@ -447,12 +462,12 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
       recognition.onend = () => {
         if (assistantState === 'LISTENING') setAssistantState('IDLE');
       };
-      
+
       recognition.onerror = (event: any) => {
         logError('Speech recognition error', { error: event.error });
         if (event.error === 'no-speech') {
-            setTranscript(''); // Trigger "didn't catch that" flow
-            return;
+          setTranscript(''); // Trigger "didn't catch that" flow
+          return;
         }
         if (event.error !== 'aborted') {
           setLastErrorType(event.error);
@@ -462,14 +477,14 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
 
       recognitionRef.current = recognition;
     }
-    
+
     setStep('GREETING');
   }, [speak, onClose, assistantState]);
-  
+
   const stopAssistant = useCallback(() => {
     if (!isSpeechSupported) return;
     if (recognitionRef.current) {
-        recognitionRef.current.abort();
+      recognitionRef.current.abort();
     }
     window.speechSynthesis.cancel();
     speechQueueRef.current = [];
