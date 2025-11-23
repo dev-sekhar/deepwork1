@@ -61,13 +61,19 @@ export const useVoiceAssistant = ({ onTaskCreate, onClose }: UseVoiceAssistantPr
     const utterance = new SpeechSynthesisUtterance(text);
     let watchdog: number | null = null;
 
-    const cleanupAndContinue = (error?: any) => {
+    const cleanupAndContinue = (eventOrError?: any) => {
       if (watchdog) clearTimeout(watchdog);
       if (!isSpeakingRef.current) return; // Avoid double execution
 
       isSpeakingRef.current = false;
-      if (error) {
-        logError('Speech synthesis utterance error', error);
+      if (eventOrError) {
+        // Filter out benign errors
+        const errorType = eventOrError.error;
+        if (errorType === 'canceled' || errorType === 'interrupted') {
+          // These are expected, no need to log as error
+        } else {
+          logError('Speech synthesis utterance error', eventOrError);
+        }
       }
 
       // Use a short timeout to allow the speech engine to reset before the next call
