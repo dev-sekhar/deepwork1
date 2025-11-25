@@ -16,6 +16,7 @@ import { evaluateTaskClassification } from './services/aiService';
 import { LogViewer } from './components/LogViewer';
 import { logInfo, logError } from './services/logService';
 import { VoiceAssistantModal } from './components/VoiceAssistantModal';
+import { getTasksForDate } from './utils/scheduleUtils';
 
 
 type AppView = 'DASHBOARD' | 'SCHEDULING' | 'FOCUS' | 'PRE_SESSION_CHECKLIST' | 'ANALYTICS' | 'HISTORY';
@@ -44,7 +45,7 @@ const Header = ({ onOpenSettings, onOpenLogs }: { onOpenSettings: () => void; on
         <h1 className="text-3xl font-bold text-primary-accent tracking-wider">Deep Work</h1>
         <p className="text-slate-400">Your assistant for sustained focus.</p>
         <div className="absolute top-4 right-4 flex items-center gap-2">
-             <button onClick={onOpenLogs} className="p-2 text-slate-400 hover:text-primary-accent transition-colors" aria-label="Developer Logs">
+            <button onClick={onOpenLogs} className="p-2 text-slate-400 hover:text-primary-accent transition-colors" aria-label="Developer Logs">
                 <LogsIcon className="w-6 h-6" />
             </button>
             <button onClick={onOpenSettings} className="p-2 text-slate-400 hover:text-primary-accent transition-colors" aria-label="Settings">
@@ -54,7 +55,7 @@ const Header = ({ onOpenSettings, onOpenLogs }: { onOpenSettings: () => void; on
     </header>
 );
 
-const RepeatIcon: React.FC<{className?: string}> = ({className}) => (
+const RepeatIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.664 0l3.181-3.183m-11.664 0l3.181-3.183a8.25 8.25 0 00-11.664 0l3.181 3.183" />
     </svg>
@@ -79,7 +80,7 @@ const getNextExecutionInfo = (item: ScheduleItem): string => {
             const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
             const repeatOn = item.repeatOn?.sort((a, b) => a - b) || [];
             if (repeatOn.length === 0) return '';
-            
+
             const currentDay = now.getDay();
 
             if (repeatOn.includes(currentDay) && todayAtItemTime > now) {
@@ -97,7 +98,7 @@ const getNextExecutionInfo = (item: ScheduleItem): string => {
             const dayOfMonth = itemStartDate.getDate();
             const todayDate = now.getDate();
             const currentMonthName = now.toLocaleString('default', { month: 'short' });
-            
+
             const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, dayOfMonth);
             const nextMonthName = nextMonthDate.toLocaleString('default', { month: 'short' });
 
@@ -106,7 +107,7 @@ const getNextExecutionInfo = (item: ScheduleItem): string => {
             } else if (dayOfMonth === todayDate && todayAtItemTime > now) {
                 return `Today at ${itemTime}`;
             } else {
-                 return `${nextMonthName} ${dayOfMonth} at ${itemTime}`;
+                return `${nextMonthName} ${dayOfMonth} at ${itemTime}`;
             }
         }
         default:
@@ -123,7 +124,7 @@ const getTypeStyles = (type: ScheduleItemType) => {
         case ScheduleItemType.AI_ASSISTED_WORK:
             return 'text-violet-400 bg-violet-900/50';
         default:
-            return 'text-slate-400 bg-slate-700';
+            return 'text-slate-400 bg-slate-800';
     }
 };
 
@@ -158,7 +159,7 @@ const ScheduleListItem: React.FC<ScheduleListItemProps> = ({ item, displayDate, 
 
     const lastPause = item.pauses && item.pauses.length > 0 ? item.pauses[item.pauses.length - 1] : null;
     const isCurrentlyPaused = lastPause ? new Date() >= new Date(lastPause.startDate) && new Date() <= new Date(lastPause.endDate) : false;
-    
+
     const isCompleted = useMemo(() => {
         if (!displayDate || !item.completions) return false;
         const displayDateStr = toLocalYYYYMMDD(displayDate);
@@ -170,19 +171,19 @@ const ScheduleListItem: React.FC<ScheduleListItemProps> = ({ item, displayDate, 
     return (
         <div className="bg-slate-800 p-4 rounded-lg flex items-start justify-between shadow-md hover:bg-slate-700/50 transition-colors duration-300">
             <div className="flex items-center gap-4 min-w-0">
-                 <div className="text-center w-24 flex-shrink-0">
+                <div className="text-center w-24 flex-shrink-0">
                     <p className={`text-lg font-mono ${textColorClass}`}>{timeString}</p>
                     {scheduleView === 'ONCE' && (
                         <p className="text-xs text-slate-400 mt-1">{dateString}</p>
                     )}
                 </div>
-                 <div className="min-w-0">
-                     <div className="flex items-center gap-3 flex-wrap">
+                <div className="min-w-0">
+                    <div className="flex items-center gap-3 flex-wrap">
                         <h3 className={`font-semibold text-lg truncate ${textColorClass}`} title={item.taskName}>{item.taskName}</h3>
                         {effectiveStatus === SessionStatus.COMPLETED && (
                             <span className="text-xs font-semibold px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full flex-shrink-0">Completed</span>
                         )}
-                         {(effectiveStatus === SessionStatus.PENDING && scheduleView === 'HISTORY') && (
+                        {(effectiveStatus === SessionStatus.PENDING && scheduleView === 'HISTORY') && (
                             <span className="text-xs font-semibold px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-full flex-shrink-0">Pending</span>
                         )}
                         {isCurrentlyPaused && (
@@ -190,9 +191,9 @@ const ScheduleListItem: React.FC<ScheduleListItemProps> = ({ item, displayDate, 
                         )}
                     </div>
                     <div className="flex items-center gap-4 text-sm text-slate-400 mt-1">
-                         {/* Tag is now only shown on the 'Once' view */}
+                        {/* Tag is now only shown on the 'Once' view */}
                         {scheduleView === 'ONCE' && (
-                           <span className={`text-xs font-bold px-2 py-1 rounded-full ${typeStyleClasses}`}>
+                            <span className={`text-xs font-bold px-2 py-1 rounded-full ${typeStyleClasses}`}>
                                 {getTypeText(item.type)}
                             </span>
                         )}
@@ -222,7 +223,7 @@ const ScheduleListItem: React.FC<ScheduleListItemProps> = ({ item, displayDate, 
             </div>
             <div className="flex flex-col items-end gap-2 flex-shrink-0 ml-2">
                 {effectiveStatus === SessionStatus.COMPLETED && onReview && displayDate && (
-                     <button onClick={() => onReview(item.id, displayDate)} className="bg-slate-600 text-white font-bold py-1 px-3 text-sm rounded-md hover:bg-slate-500 transition w-full text-center">
+                    <button onClick={() => onReview(item.id, displayDate)} className="bg-slate-600 text-white font-bold py-1 px-3 text-sm rounded-md hover:bg-slate-500 transition w-full text-center">
                         Review
                     </button>
                 )}
@@ -234,7 +235,7 @@ const ScheduleListItem: React.FC<ScheduleListItemProps> = ({ item, displayDate, 
                                 Start
                             </button>
                         )}
-                        
+
                         {/* PAUSE/DELETE container for recurring and one-time tasks (but not Today) */}
                         {(scheduleView !== 'TODAY' && scheduleView !== 'HISTORY') && (
                             <div className="flex gap-2">
@@ -257,498 +258,431 @@ const ScheduleListItem: React.FC<ScheduleListItemProps> = ({ item, displayDate, 
     );
 };
 
-export const getTasksForDate = (schedule: ScheduleItem[], date: Date): ScheduleItem[] => {
-    const checkDate = new Date(date);
-    checkDate.setHours(0, 0, 0, 0);
-
-    const dayOfWeek = checkDate.getDay();
-    const dayOfMonth = checkDate.getDate();
-    
-    const tasks = schedule.filter(item => {
-        // Filter out logically deleted (cancelled) one-time tasks
-        if (item.isCancelled) {
-            return false;
-        }
-
-        const itemStartDate = new Date(item.startDate);
-        itemStartDate.setHours(0, 0, 0, 0);
-        
-        // Filter out recurring tasks that have ended
-        if (item.endDate) {
-            const itemEndDate = new Date(item.endDate);
-            itemEndDate.setHours(0,0,0,0);
-            if (checkDate > itemEndDate) {
-                return false;
-            }
-        }
-        
-        // Filter out tasks that are paused on this date
-        if (item.pauses && item.pauses.length > 0) {
-            const isPaused = item.pauses.some(pause => {
-                const pauseStart = new Date(pause.startDate);
-                pauseStart.setHours(0,0,0,0);
-                const pauseEnd = new Date(pause.endDate);
-                pauseEnd.setHours(0,0,0,0);
-                return checkDate >= pauseStart && checkDate <= pauseEnd;
-            });
-            if (isPaused) {
-                return false;
-            }
-        }
-
-        if (item.repeatFrequency === 'ONCE') {
-            return itemStartDate.getTime() === checkDate.getTime();
-        }
-
-        // Don't show recurring tasks before their official start date
-        if (itemStartDate.getTime() > checkDate.getTime()) {
-            return false;
-        }
-
-        switch (item.repeatFrequency) {
-            case 'DAILY':
-                return true;
-            case 'WEEKLY':
-                return item.repeatOn?.includes(dayOfWeek) ?? false;
-            case 'MONTHLY':
-                return new Date(item.startDate).getDate() === dayOfMonth;
-            default:
-                return false;
-        }
-    });
-
-    return tasks.sort((a, b) => {
-        const timeA = new Date(a.startDate).getHours() * 60 + new Date(a.startDate).getMinutes();
-        const timeB = new Date(b.startDate).getHours() * 60 + new Date(b.startDate).getMinutes();
-        return timeA - timeB;
-    });
-};
-
-
 const App: React.FC = () => {
-  const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
-  const [currentView, setCurrentView] = useState<AppView>('DASHBOARD');
-  const [scheduleView, setScheduleView] = useState<ScheduleView>('TODAY');
-  const [activeSession, setActiveSession] = useState<ScheduleItem | null>(null);
-  const [sessionForFeedback, setSessionForFeedback] = useState<{item: ScheduleItem, date: Date} | null>(null);
-  const [taskForReview, setTaskForReview] = useState<{item: ScheduleItem, date: Date} | null>(null);
-  const [taskToPause, setTaskToPause] = useState<ScheduleItem | null>(null);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
-  const [isVoiceAssistantOpen, setIsVoiceAssistantOpen] = useState(false);
-  const [settings, setSettings] = useState<AppSettings>(getSettings());
-  
-  useEffect(() => {
-    document.body.className = `bg-slate-900 text-white theme-${settings.theme}`;
-  }, [settings.theme]);
+    const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
+    const [currentView, setCurrentView] = useState<AppView>('DASHBOARD');
+    const [scheduleView, setScheduleView] = useState<ScheduleView>('TODAY');
+    const [activeSession, setActiveSession] = useState<ScheduleItem | null>(null);
+    const [sessionForFeedback, setSessionForFeedback] = useState<{ item: ScheduleItem, date: Date } | null>(null);
+    const [taskForReview, setTaskForReview] = useState<{ item: ScheduleItem, date: Date } | null>(null);
+    const [taskToPause, setTaskToPause] = useState<ScheduleItem | null>(null);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
+    const [isVoiceAssistantOpen, setIsVoiceAssistantOpen] = useState(false);
+    const [settings, setSettings] = useState<AppSettings>(getSettings());
 
-  const handleSaveSettings = (newSettings: AppSettings) => {
-    saveSettings(newSettings);
-    setSettings(newSettings);
-    setIsSettingsOpen(false);
-  };
+    useEffect(() => {
+        document.body.className = `bg-slate-900 text-white theme-${settings.theme}`;
+        console.log('[App] API Key present:', !!process.env.API_KEY);
+        console.log('[App] Settings (Full):', JSON.stringify(settings, null, 2));
+    }, [settings.theme, settings]);
 
-  const handleAddItem = useCallback((item: ScheduleItem) => {
-    logInfo('Adding new schedule item', { taskName: item.taskName, type: item.type, duration: item.durationMinutes });
-    setSchedule(prev => [...prev, item]);
-    setCurrentView('DASHBOARD');
-    setIsVoiceAssistantOpen(false);
-  }, []);
+    const handleSaveSettings = (newSettings: AppSettings) => {
+        saveSettings(newSettings);
+        setSettings(newSettings);
+        setIsSettingsOpen(false);
+    };
 
-  const handleStartSession = useCallback((sessionId: string) => {
-    const sessionToStart = schedule.find(s => s.id === sessionId);
-    if (sessionToStart) {
-        logInfo('Starting session', { id: sessionId, taskName: sessionToStart.taskName });
-        setActiveSession(sessionToStart);
-        if (sessionToStart.type === ScheduleItemType.DEEP_WORK) {
-            setCurrentView('PRE_SESSION_CHECKLIST');
+    const handleAddItem = useCallback((item: ScheduleItem) => {
+        logInfo('Adding new schedule item', { taskName: item.taskName, type: item.type, duration: item.durationMinutes });
+        setSchedule(prev => [...prev, item]);
+        setCurrentView('DASHBOARD');
+        setIsVoiceAssistantOpen(false);
+    }, []);
+
+    const handleStartSession = useCallback((sessionId: string) => {
+        const sessionToStart = schedule.find(s => s.id === sessionId);
+        if (sessionToStart) {
+            logInfo('Starting session', { id: sessionId, taskName: sessionToStart.taskName, type: sessionToStart.type });
+            setActiveSession(sessionToStart);
+            if (sessionToStart.type === ScheduleItemType.DEEP_WORK) {
+                setCurrentView('PRE_SESSION_CHECKLIST');
+            } else {
+                setCurrentView('FOCUS');
+            }
         } else {
+            logError('Attempted to start a non-existent session', { sessionId });
+        }
+    }, [schedule]);
+
+    const handleReviewTask = useCallback((itemId: string, date: Date) => {
+        const itemToReview = schedule.find(s => s.id === itemId);
+        if (itemToReview) {
+            setTaskForReview({ item: itemToReview, date });
+        }
+    }, [schedule]);
+
+    const handleDeleteItem = useCallback((itemId: string) => {
+        setSchedule(prev => prev.map(item => {
+            if (item.id === itemId) {
+                logInfo('Deleting item', { id: itemId, taskName: item.taskName, type: item.repeatFrequency });
+                if (item.repeatFrequency === 'ONCE') {
+                    return { ...item, isCancelled: true };
+                } else {
+                    // For recurring tasks, set end date to today to stop future occurrences
+                    return { ...item, endDate: new Date().toISOString() };
+                }
+            }
+            return item;
+        }));
+    }, []);
+
+    const handlePauseItem = useCallback((itemId: string) => {
+        const itemToPause = schedule.find(s => s.id === itemId);
+        if (itemToPause) {
+            setTaskToPause(itemToPause);
+        }
+    }, [schedule]);
+
+    const handleUnpauseItem = useCallback((itemId: string) => {
+        setSchedule(prev => prev.map(item => {
+            if (item.id === itemId && item.pauses && item.pauses.length > 0) {
+                logInfo('Unpausing item', { id: itemId, taskName: item.taskName });
+                const newPauses = [...item.pauses];
+                const lastPause = newPauses[newPauses.length - 1];
+                // End the pause effective immediately, if it was supposed to end in the future
+                if (new Date(lastPause.endDate) > new Date()) {
+                    lastPause.endDate = new Date().toISOString();
+                }
+                return { ...item, pauses: newPauses };
+            }
+            return item;
+        }));
+    }, []);
+
+    const handlePauseSubmit = useCallback((pauseData: { startDate: string; endDate: string; reason: string }) => {
+        if (taskToPause) {
+            logInfo('Pausing item with date range', { id: taskToPause.id, taskName: taskToPause.taskName, pauseData });
+            setSchedule(prev => prev.map(item => {
+                if (item.id === taskToPause.id) {
+                    const newPauses = [...(item.pauses || []), pauseData];
+                    return { ...item, pauses: newPauses };
+                }
+                return item;
+            }));
+            setTaskToPause(null);
+        }
+    }, [taskToPause]);
+
+    const handleUpdateActiveSession = useCallback((updatedSession: ScheduleItem) => {
+        setActiveSession(updatedSession);
+        setSchedule(prev => prev.map(s => s.id === updatedSession.id ? updatedSession : s));
+    }, []);
+
+    const handleChecklistComplete = useCallback(() => {
+        if (activeSession) {
+            logInfo('Pre-session checklist complete, starting focus view.', { id: activeSession.id });
             setCurrentView('FOCUS');
         }
-    } else {
-        logError('Attempted to start a non-existent session', { sessionId });
-    }
-  }, [schedule]);
+    }, [activeSession]);
 
-   const handleReviewTask = useCallback((itemId: string, date: Date) => {
-      const itemToReview = schedule.find(s => s.id === itemId);
-      if(itemToReview) {
-          setTaskForReview({ item: itemToReview, date });
-      }
-  }, [schedule]);
-  
-  const handleDeleteItem = useCallback((itemId: string) => {
-      setSchedule(prev => prev.map(item => {
-          if (item.id === itemId) {
-              logInfo('Deleting item', { id: itemId, taskName: item.taskName, type: item.repeatFrequency });
-              if (item.repeatFrequency === 'ONCE') {
-                  return { ...item, isCancelled: true };
-              } else {
-                  // For recurring tasks, set end date to today to stop future occurrences
-                  return { ...item, endDate: new Date().toISOString() };
-              }
-          }
-          return item;
-      }));
-  }, []);
+    const handleSessionComplete = useCallback(() => {
+        if (activeSession) {
+            logInfo('Completing session', { id: activeSession.id, taskName: activeSession.taskName, type: activeSession.type });
+            if (activeSession.type === ScheduleItemType.SHALLOW_WORK) {
+                // For shallow tasks, bypass the feedback modal and mark as complete immediately.
+                const completionDate = new Date();
+                const completionDateStr = toLocalYYYYMMDD(completionDate);
 
-  const handlePauseItem = useCallback((itemId: string) => {
-      const itemToPause = schedule.find(s => s.id === itemId);
-      if (itemToPause) {
-          setTaskToPause(itemToPause);
-      }
-  }, [schedule]);
-  
-  const handleUnpauseItem = useCallback((itemId: string) => {
-      setSchedule(prev => prev.map(item => {
-          if (item.id === itemId && item.pauses && item.pauses.length > 0) {
-              logInfo('Unpausing item', { id: itemId, taskName: item.taskName });
-              const newPauses = [...item.pauses];
-              const lastPause = newPauses[newPauses.length - 1];
-              // End the pause effective immediately, if it was supposed to end in the future
-              if (new Date(lastPause.endDate) > new Date()) {
-                  lastPause.endDate = new Date().toISOString();
-              }
-              return { ...item, pauses: newPauses };
-          }
-          return item;
-      }));
-  }, []);
-  
-  const handlePauseSubmit = useCallback((pauseData: { startDate: string; endDate: string; reason: string }) => {
-      if (taskToPause) {
-          logInfo('Pausing item with date range', { id: taskToPause.id, taskName: taskToPause.taskName, pauseData });
-          setSchedule(prev => prev.map(item => {
-              if (item.id === taskToPause.id) {
-                  const newPauses = [...(item.pauses || []), pauseData];
-                  return { ...item, pauses: newPauses };
-              }
-              return item;
-          }));
-          setTaskToPause(null);
-      }
-  }, [taskToPause]);
+                setSchedule(prev => prev.map(s => {
+                    if (s.id === activeSession.id) {
+                        // A null feedback indicates simple completion without detailed review.
+                        const newCompletion: CompletionRecord = { date: completionDateStr, feedback: null };
+                        const updatedCompletions = [...(s.completions || []), newCompletion];
 
+                        if (s.repeatFrequency === 'ONCE') {
+                            return { ...s, completions: updatedCompletions, status: SessionStatus.COMPLETED };
+                        } else {
+                            return { ...s, completions: updatedCompletions };
+                        }
+                    }
+                    return s;
+                }));
 
-  const handleUpdateActiveSession = useCallback((updatedSession: ScheduleItem) => {
-      setActiveSession(updatedSession);
-      setSchedule(prev => prev.map(s => s.id === updatedSession.id ? updatedSession : s));
-  }, []);
-
-  const handleChecklistComplete = useCallback(() => {
-    if (activeSession) {
-      logInfo('Pre-session checklist complete, starting focus view.', { id: activeSession.id });
-      setCurrentView('FOCUS');
-    }
-  }, [activeSession]);
-
-  const handleSessionComplete = useCallback(() => {
-    if (activeSession) {
-      logInfo('Completing session', { id: activeSession.id, taskName: activeSession.taskName, type: activeSession.type });
-      if (activeSession.type === ScheduleItemType.SHALLOW_WORK) {
-        // For shallow tasks, bypass the feedback modal and mark as complete immediately.
-        const completionDate = new Date();
-        const completionDateStr = toLocalYYYYMMDD(completionDate);
-
-        setSchedule(prev => prev.map(s => {
-            if (s.id === activeSession.id) {
-                // A null feedback indicates simple completion without detailed review.
-                const newCompletion: CompletionRecord = { date: completionDateStr, feedback: null };
-                const updatedCompletions = [...(s.completions || []), newCompletion];
-                
-                if (s.repeatFrequency === 'ONCE') {
-                    return { ...s, completions: updatedCompletions, status: SessionStatus.COMPLETED };
-                } else {
-                    return { ...s, completions: updatedCompletions };
-                }
+                setActiveSession(null);
+                setCurrentView('DASHBOARD');
+            } else {
+                // For deep work sessions (and any other types), show the feedback modal.
+                setSessionForFeedback({ item: activeSession, date: new Date() });
+                setActiveSession(null);
+                setCurrentView('DASHBOARD');
             }
-            return s;
-        }));
-        
+        }
+    }, [activeSession]);
+
+    const handleFeedbackSubmit = useCallback(async (feedback: Feedback) => {
+        if (sessionForFeedback) {
+            const { item: completedItem, date: completionDate } = sessionForFeedback;
+            const completionDateStr = toLocalYYYYMMDD(completionDate);
+            logInfo('Submitting feedback for session', { id: completedItem.id, taskName: completedItem.taskName, feedback });
+
+            // Run post-session analysis
+            const analysis = await evaluateTaskClassification(
+                completedItem.taskName,
+                (completedItem as DeepWorkSession).goal || null,
+                feedback,
+                () => { } // Silent status update
+            );
+
+            setSchedule(prev => prev.map(s => {
+                if (s.id === completedItem.id) {
+                    const newCompletion: CompletionRecord = {
+                        date: completionDateStr,
+                        feedback,
+                        postSessionAnalysis: analysis ? {
+                            suggestedClassification: analysis.classification,
+                            userClassification: completedItem.type,
+                            rationale: analysis.rationale,
+                        } : undefined,
+                    };
+
+                    const existingCompletions = s.completions || [];
+                    const updatedCompletions = [...existingCompletions.filter(c => c.date !== completionDateStr), newCompletion];
+
+                    if (s.repeatFrequency === 'ONCE') {
+                        return { ...s, completions: updatedCompletions, status: SessionStatus.COMPLETED };
+                    } else {
+                        return { ...s, completions: updatedCompletions };
+                    }
+                }
+                return s;
+            }));
+            setSessionForFeedback(null);
+        }
+    }, [sessionForFeedback]);
+
+    const handleBackToDashboard = useCallback(() => {
         setActiveSession(null);
         setCurrentView('DASHBOARD');
-      } else {
-        // For deep work sessions (and any other types), show the feedback modal.
-        setSessionForFeedback({ item: activeSession, date: new Date() });
-        setActiveSession(null);
-        setCurrentView('DASHBOARD');
-      }
-    }
-  }, [activeSession]);
+    }, []);
 
-  const handleFeedbackSubmit = useCallback(async (feedback: Feedback) => {
-    if (sessionForFeedback) {
-        const { item: completedItem, date: completionDate } = sessionForFeedback;
-        const completionDateStr = toLocalYYYYMMDD(completionDate);
-        logInfo('Submitting feedback for session', { id: completedItem.id, taskName: completedItem.taskName, feedback });
+    const todaysSchedule = useMemo(() => {
+        const today = new Date();
+        return getTasksForDate(schedule, today);
+    }, [schedule]);
 
-        // Run post-session analysis
-        const analysis = await evaluateTaskClassification(
-            completedItem.taskName,
-            (completedItem as DeepWorkSession).goal || null,
-            feedback,
-            () => {} // Silent status update
+    const oneTimeSchedule = useMemo(() => {
+        return schedule
+            .filter(item => item.repeatFrequency === 'ONCE' && !item.isCancelled)
+            .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+    }, [schedule]);
+
+    const recurringSchedules = useMemo(() => {
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+
+        return schedule.filter(item =>
+            item.repeatFrequency !== 'ONCE' &&
+            (!item.endDate || new Date(item.endDate) >= now)
         );
+    }, [schedule]);
 
-        setSchedule(prev => prev.map(s => {
-            if (s.id === completedItem.id) {
-                const newCompletion: CompletionRecord = { 
-                    date: completionDateStr, 
-                    feedback,
-                    postSessionAnalysis: analysis ? {
-                        suggestedClassification: analysis.classification,
-                        userClassification: completedItem.type,
-                        rationale: analysis.rationale,
-                    } : undefined,
+    const dailySchedule = useMemo(() => {
+        return recurringSchedules.filter(item => item.repeatFrequency === 'DAILY')
+            .sort((a, b) => {
+                const timeA = new Date(a.startDate).getHours() * 60 + new Date(a.startDate).getMinutes();
+                const timeB = new Date(b.startDate).getHours() * 60 + new Date(b.startDate).getMinutes();
+                return timeA - timeB;
+            });
+    }, [recurringSchedules]);
+
+    const weeklySchedule = useMemo(() => {
+        return recurringSchedules.filter(item => item.repeatFrequency === 'WEEKLY')
+            .sort((a, b) => {
+                const timeA = new Date(a.startDate).getHours() * 60 + new Date(a.startDate).getMinutes();
+                const timeB = new Date(b.startDate).getHours() * 60 + new Date(b.startDate).getMinutes();
+                return timeA - timeB;
+            });
+    }, [recurringSchedules]);
+
+    const monthlySchedule = useMemo(() => {
+        return recurringSchedules.filter(item => item.repeatFrequency === 'MONTHLY')
+            .sort((a, b) => {
+                const timeA = new Date(a.startDate).getHours() * 60 + new Date(a.startDate).getMinutes();
+                const timeB = new Date(b.startDate).getHours() * 60 + new Date(b.startDate).getMinutes();
+                return timeA - timeB;
+            });
+    }, [recurringSchedules]);
+
+
+    const renderView = () => {
+        switch (currentView) {
+            case 'SCHEDULING':
+                return <SessionScheduler onAddItem={handleAddItem} onCancel={() => setCurrentView('DASHBOARD')} schedule={schedule} settings={settings} />;
+            case 'PRE_SESSION_CHECKLIST':
+                return activeSession && activeSession.type === ScheduleItemType.DEEP_WORK ? <PreSessionChecklist session={activeSession} onUpdateSession={handleUpdateActiveSession} onStartFocus={handleChecklistComplete} onBack={handleBackToDashboard} /> : null;
+            case 'FOCUS':
+                return activeSession ? <FocusView session={activeSession} onComplete={handleSessionComplete} onBack={handleBackToDashboard} /> : null;
+            case 'ANALYTICS':
+                return <AnalyticsView schedule={schedule} onBack={() => setCurrentView('DASHBOARD')} />;
+            case 'HISTORY':
+                return <HistoryView schedule={schedule} onBack={() => setCurrentView('DASHBOARD')} onReview={handleReviewTask} ListItem={ScheduleListItem} />;
+            case 'DASHBOARD':
+            default:
+                const renderScheduleList = (items: ScheduleItem[], displayDateFunc?: (item: ScheduleItem) => Date) => {
+                    return items.map(item => (
+                        <ScheduleListItem
+                            key={item.id}
+                            item={item}
+                            displayDate={displayDateFunc ? displayDateFunc(item) : undefined}
+                            onStart={handleStartSession}
+                            onReview={handleReviewTask}
+                            onDelete={handleDeleteItem}
+                            onPause={handlePauseItem}
+                            onUnpause={handleUnpauseItem}
+                            scheduleView={scheduleView}
+                            isActionable={true}
+                        />
+                    ));
                 };
-                
-                const existingCompletions = s.completions || [];
-                const updatedCompletions = [...existingCompletions.filter(c => c.date !== completionDateStr), newCompletion];
 
-                if (s.repeatFrequency === 'ONCE') {
-                    return { ...s, completions: updatedCompletions, status: SessionStatus.COMPLETED };
-                } else {
-                    return { ...s, completions: updatedCompletions };
-                }
-            }
-            return s;
-        }));
-        setSessionForFeedback(null);
-    }
-  }, [sessionForFeedback]);
-  
-  const handleBackToDashboard = useCallback(() => {
-      setActiveSession(null);
-      setCurrentView('DASHBOARD');
-  }, []);
-  
-  const todaysSchedule = useMemo(() => {
-    const today = new Date();
-    return getTasksForDate(schedule, today);
-  }, [schedule]);
+                return (
+                    <div className="w-full max-w-2xl mx-auto space-y-6 p-4">
+                        {!process.env.API_KEY && (
+                            <div className="p-4 bg-red-900/50 text-red-300 rounded-lg text-center">
+                                <p className="font-bold">Warning: AI Features Disabled</p>
+                                <p className="text-sm">No Gemini API key is configured. AI assistance is unavailable.</p>
+                            </div>
+                        )}
 
-  const oneTimeSchedule = useMemo(() => {
-    return schedule
-        .filter(item => item.repeatFrequency === 'ONCE' && !item.isCancelled)
-        .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
-  }, [schedule]);
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <button
+                                onClick={() => setCurrentView('SCHEDULING')}
+                                className="w-full flex items-center justify-center gap-2 bg-primary text-white font-bold py-3 px-4 rounded-lg hover:bg-primary-focus transition shadow-lg"
+                            >
+                                <PlusIcon className="w-6 h-6" />
+                                Schedule
+                            </button>
+                            <button
+                                onClick={() => { console.log('[App] Voice button clicked'); setIsVoiceAssistantOpen(true); }}
+                                disabled={!process.env.API_KEY}
+                                className="w-full flex items-center justify-center gap-2 bg-slate-700 text-white font-bold py-3 px-4 rounded-lg hover:bg-slate-600 transition shadow-lg disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed"
+                            >
+                                <MicrophoneIcon className="w-6 h-6" />
+                                Voice
+                            </button>
+                            <button
+                                onClick={() => setCurrentView('ANALYTICS')}
+                                className="w-full flex items-center justify-center gap-2 bg-slate-700 text-white font-bold py-3 px-4 rounded-lg hover:bg-slate-600 transition shadow-lg"
+                            >
+                                <ChartBarIcon className="w-6 h-6" />
+                                Analytics
+                            </button>
+                            <button
+                                onClick={() => setCurrentView('HISTORY')}
+                                className="w-full flex items-center justify-center gap-2 bg-slate-700 text-white font-bold py-3 px-4 rounded-lg hover:bg-slate-600 transition shadow-lg"
+                            >
+                                <CalendarIcon className="w-6 h-6" />
+                                History
+                            </button>
+                        </div>
 
-  const recurringSchedules = useMemo(() => {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
+                        <div className="grid grid-cols-5 gap-2 p-1 bg-slate-800 rounded-lg">
+                            {scheduleViewOptions.map(({ name, value }) => (
+                                <button key={value} onClick={() => setScheduleView(value)} className={`px-3 py-2 rounded-md text-sm font-semibold transition capitalize ${scheduleView === value ? 'bg-primary text-slate-900' : 'bg-transparent hover:bg-slate-700'}`}>
+                                    {name}
+                                </button>
+                            ))}
+                        </div>
 
-    return schedule.filter(item => 
-        item.repeatFrequency !== 'ONCE' && 
-        (!item.endDate || new Date(item.endDate) >= now)
-    );
-  }, [schedule]);
+                        <div className="space-y-4">
+                            {scheduleView === 'TODAY' && (
+                                <>
+                                    <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">Today's Plan</h2>
+                                    {todaysSchedule.length === 0 ? (
+                                        <p className="text-center text-slate-400 py-8">No items scheduled for today.</p>
+                                    ) : (
+                                        todaysSchedule.map(item => (
+                                            <ScheduleListItem key={item.id} item={item} displayDate={new Date()} onStart={handleStartSession} onReview={handleReviewTask} onDelete={handleDeleteItem} onPause={handlePauseItem} onUnpause={handleUnpauseItem} scheduleView={scheduleView} isActionable={true} />
+                                        ))
+                                    )}
+                                </>
+                            )}
+                            {scheduleView === 'ONCE' && (
+                                <>
+                                    <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">One-Time Tasks</h2>
+                                    {oneTimeSchedule.length === 0 ? (
+                                        <p className="text-center text-slate-400 py-8">No one-time tasks scheduled.</p>
+                                    ) : (
+                                        renderScheduleList(oneTimeSchedule, item => new Date(item.startDate))
+                                    )}
+                                </>
+                            )}
+                            {scheduleView === 'DAILY' && (
+                                <>
+                                    <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">Daily Tasks</h2>
+                                    {dailySchedule.length === 0 ? (
+                                        <p className="text-center text-slate-400 py-8">No daily tasks scheduled.</p>
+                                    ) : (
+                                        renderScheduleList(dailySchedule)
+                                    )}
+                                </>
+                            )}
+                            {scheduleView === 'WEEKLY' && (
+                                <>
+                                    <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">Weekly Tasks</h2>
+                                    {weeklySchedule.length === 0 ? (
+                                        <p className="text-center text-slate-400 py-8">No weekly tasks scheduled.</p>
+                                    ) : (
+                                        renderScheduleList(weeklySchedule)
+                                    )}
+                                </>
+                            )}
+                            {scheduleView === 'MONTHLY' &&
+                                <>
+                                    <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">Monthly Tasks</h2>
+                                    {monthlySchedule.length === 0 ? (
+                                        <p className="text-center text-slate-400 py-8">No monthly tasks scheduled.</p>
+                                    ) : (
+                                        renderScheduleList(monthlySchedule)
+                                    )}
+                                </>
+                            }
+                        </div>
+                    </div>
+                );
+        }
+    };
 
-  const dailySchedule = useMemo(() => {
-    return recurringSchedules.filter(item => item.repeatFrequency === 'DAILY')
-      .sort((a, b) => {
-        const timeA = new Date(a.startDate).getHours() * 60 + new Date(a.startDate).getMinutes();
-        const timeB = new Date(b.startDate).getHours() * 60 + new Date(b.startDate).getMinutes();
-        return timeA - timeB;
-      });
-  }, [recurringSchedules]);
-
-  const weeklySchedule = useMemo(() => {
-    return recurringSchedules.filter(item => item.repeatFrequency === 'WEEKLY')
-      .sort((a, b) => {
-        const timeA = new Date(a.startDate).getHours() * 60 + new Date(a.startDate).getMinutes();
-        const timeB = new Date(b.startDate).getHours() * 60 + new Date(b.startDate).getMinutes();
-        return timeA - timeB;
-      });
-  }, [recurringSchedules]);
-
-  const monthlySchedule = useMemo(() => {
-    return recurringSchedules.filter(item => item.repeatFrequency === 'MONTHLY')
-      .sort((a, b) => {
-        const timeA = new Date(a.startDate).getHours() * 60 + new Date(a.startDate).getMinutes();
-        const timeB = new Date(b.startDate).getHours() * 60 + new Date(b.startDate).getMinutes();
-        return timeA - timeB;
-      });
-  }, [recurringSchedules]);
-
-
-  const renderView = () => {
-    switch (currentView) {
-      case 'SCHEDULING':
-        return <SessionScheduler onAddItem={handleAddItem} onCancel={() => setCurrentView('DASHBOARD')} schedule={schedule} settings={settings} />;
-      case 'PRE_SESSION_CHECKLIST':
-        return activeSession && activeSession.type === ScheduleItemType.DEEP_WORK ? <PreSessionChecklist session={activeSession} onUpdateSession={handleUpdateActiveSession} onStartFocus={handleChecklistComplete} onBack={handleBackToDashboard} /> : null;
-      case 'FOCUS':
-        return activeSession ? <FocusView session={activeSession} onComplete={handleSessionComplete} onBack={handleBackToDashboard} /> : null;
-      case 'ANALYTICS':
-        return <AnalyticsView schedule={schedule} onBack={() => setCurrentView('DASHBOARD')} />;
-      case 'HISTORY':
-        return <HistoryView schedule={schedule} onBack={() => setCurrentView('DASHBOARD')} onReview={handleReviewTask} ListItem={ScheduleListItem} />;
-      case 'DASHBOARD':
-      default:
-        const renderScheduleList = (items: ScheduleItem[], displayDateFunc?: (item: ScheduleItem) => Date) => {
-            return items.map(item => (
-                <ScheduleListItem 
-                    key={item.id} 
-                    item={item} 
-                    displayDate={displayDateFunc ? displayDateFunc(item) : undefined}
-                    onStart={handleStartSession} 
-                    onReview={handleReviewTask} 
-                    onDelete={handleDeleteItem}
-                    onPause={handlePauseItem}
-                    onUnpause={handleUnpauseItem}
-                    scheduleView={scheduleView} 
-                    isActionable={true} 
+    return (
+        <div className="min-h-screen bg-slate-900 text-white font-sans flex flex-col">
+            <Header onOpenSettings={() => setIsSettingsOpen(true)} onOpenLogs={() => setIsLogViewerOpen(true)} />
+            <main className="flex-grow flex justify-center items-start py-4">
+                {renderView()}
+            </main>
+            {sessionForFeedback && (
+                <FeedbackModal
+                    sessionName={sessionForFeedback.item.taskName}
+                    onSubmit={handleFeedbackSubmit}
                 />
-            ));
-        };
-      
-        return (
-          <div className="w-full max-w-2xl mx-auto space-y-6 p-4">
-             {!process.env.API_KEY && (
-                <div className="p-4 bg-red-900/50 text-red-300 rounded-lg text-center">
-                    <p className="font-bold">Warning: AI Features Disabled</p>
-                    <p className="text-sm">No Gemini API key is configured. AI assistance is unavailable.</p>
-                </div>
             )}
-
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <button
-                onClick={() => setCurrentView('SCHEDULING')}
-                className="w-full flex items-center justify-center gap-2 bg-primary text-white font-bold py-3 px-4 rounded-lg hover:bg-primary-focus transition shadow-lg"
-                >
-                <PlusIcon className="w-6 h-6" />
-                Schedule
-                </button>
-                 <button
-                onClick={() => setIsVoiceAssistantOpen(true)}
-                disabled={!process.env.API_KEY}
-                className="w-full flex items-center justify-center gap-2 bg-slate-700 text-white font-bold py-3 px-4 rounded-lg hover:bg-slate-600 transition shadow-lg disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed"
-                >
-                <MicrophoneIcon className="w-6 h-6" />
-                Voice
-                </button>
-                 <button
-                onClick={() => setCurrentView('ANALYTICS')}
-                className="w-full flex items-center justify-center gap-2 bg-slate-700 text-white font-bold py-3 px-4 rounded-lg hover:bg-slate-600 transition shadow-lg"
-                >
-                <ChartBarIcon className="w-6 h-6" />
-                Analytics
-                </button>
-                 <button
-                onClick={() => setCurrentView('HISTORY')}
-                className="w-full flex items-center justify-center gap-2 bg-slate-700 text-white font-bold py-3 px-4 rounded-lg hover:bg-slate-600 transition shadow-lg"
-                >
-                <CalendarIcon className="w-6 h-6" />
-                History
-                </button>
-            </div>
-            
-            <div className="grid grid-cols-5 gap-2 p-1 bg-slate-800 rounded-lg">
-                {scheduleViewOptions.map(({name, value}) => (
-                    <button key={value} onClick={() => setScheduleView(value)} className={`px-3 py-2 rounded-md text-sm font-semibold transition capitalize ${scheduleView === value ? 'bg-primary text-slate-900' : 'bg-transparent hover:bg-slate-700'}`}>
-                        {name}
-                    </button>
-                ))}
-            </div>
-
-            <div className="space-y-4">
-                {scheduleView === 'TODAY' && (
-                    <>
-                        <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">Today's Plan</h2>
-                        {todaysSchedule.length === 0 ? (
-                            <p className="text-center text-slate-400 py-8">No items scheduled for today.</p>
-                        ) : (
-                            todaysSchedule.map(item => (
-                                <ScheduleListItem key={item.id} item={item} displayDate={new Date()} onStart={handleStartSession} onReview={handleReviewTask} onDelete={handleDeleteItem} onPause={handlePauseItem} onUnpause={handleUnpauseItem} scheduleView={scheduleView} isActionable={true} />
-                            ))
-                        )}
-                    </>
-                )}
-                 {scheduleView === 'ONCE' && (
-                    <>
-                        <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">One-Time Tasks</h2>
-                        {oneTimeSchedule.length === 0 ? (
-                            <p className="text-center text-slate-400 py-8">No one-time tasks scheduled.</p>
-                        ) : (
-                            renderScheduleList(oneTimeSchedule, item => new Date(item.startDate))
-                        )}
-                    </>
-                )}
-                 {scheduleView === 'DAILY' && (
-                    <>
-                        <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">Daily Tasks</h2>
-                        {dailySchedule.length === 0 ? (
-                            <p className="text-center text-slate-400 py-8">No daily tasks scheduled.</p>
-                        ) : (
-                            renderScheduleList(dailySchedule)
-                        )}
-                    </>
-                 )}
-                 {scheduleView === 'WEEKLY' && (
-                    <>
-                        <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">Weekly Tasks</h2>
-                         {weeklySchedule.length === 0 ? (
-                            <p className="text-center text-slate-400 py-8">No weekly tasks scheduled.</p>
-                        ) : (
-                            renderScheduleList(weeklySchedule)
-                        )}
-                    </>
-                 )}
-                 {scheduleView === 'MONTHLY' && 
-                    <>
-                        <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">Monthly Tasks</h2>
-                        {monthlySchedule.length === 0 ? (
-                            <p className="text-center text-slate-400 py-8">No monthly tasks scheduled.</p>
-                        ) : (
-                            renderScheduleList(monthlySchedule)
-                        )}
-                    </>
-                 }
-            </div>
-          </div>
-        );
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-900 text-white font-sans flex flex-col">
-      <Header onOpenSettings={() => setIsSettingsOpen(true)} onOpenLogs={() => setIsLogViewerOpen(true)} />
-      <main className="flex-grow flex justify-center items-start py-4">
-        {renderView()}
-      </main>
-      {sessionForFeedback && (
-        <FeedbackModal 
-            sessionName={sessionForFeedback.item.taskName} 
-            onSubmit={handleFeedbackSubmit} 
-        />
-      )}
-      {taskForReview && (
-        <TaskReviewModal item={taskForReview.item} reviewDate={taskForReview.date} onClose={() => setTaskForReview(null)} />
-      )}
-      {taskToPause && (
-        <PauseTaskModal
-            taskName={taskToPause.taskName}
-            onClose={() => setTaskToPause(null)}
-            onSubmit={handlePauseSubmit}
-        />
-      )}
-      {isSettingsOpen && (
-        <SettingsModal 
-            currentSettings={settings}
-            onClose={() => setIsSettingsOpen(false)}
-            onSave={handleSaveSettings}
-        />
-      )}
-      {isLogViewerOpen && (
-        <LogViewer onClose={() => setIsLogViewerOpen(false)} />
-      )}
-      {isVoiceAssistantOpen && (
-        <VoiceAssistantModal
-          onClose={() => setIsVoiceAssistantOpen(false)}
-          onTaskCreate={handleAddItem}
-        />
-      )}
-      <style>{`
+            {taskForReview && (
+                <TaskReviewModal item={taskForReview.item} reviewDate={taskForReview.date} onClose={() => setTaskForReview(null)} />
+            )}
+            {taskToPause && (
+                <PauseTaskModal
+                    taskName={taskToPause.taskName}
+                    onClose={() => setTaskToPause(null)}
+                    onSubmit={handlePauseSubmit}
+                />
+            )}
+            {isSettingsOpen && (
+                <SettingsModal
+                    currentSettings={settings}
+                    onClose={() => setIsSettingsOpen(false)}
+                    onSave={handleSaveSettings}
+                />
+            )}
+            {isLogViewerOpen && (
+                <LogViewer onClose={() => setIsLogViewerOpen(false)} />
+            )}
+            {isVoiceAssistantOpen && (
+                <VoiceAssistantModal
+                    onClose={() => setIsVoiceAssistantOpen(false)}
+                    onTaskCreate={handleAddItem}
+                />
+            )}
+            <style>{`
         @keyframes fade-in {
           from { opacity: 0; }
           to { opacity: 1; }
@@ -770,8 +704,8 @@ const App: React.FC = () => {
             cursor: pointer;
         }
       `}</style>
-    </div>
-  );
+        </div>
+    );
 };
 
 export default App;

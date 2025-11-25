@@ -10,6 +10,8 @@ export interface Holiday {
 export interface AIPreferences {
     enabled: boolean; // Master toggle
     features: {
+        voiceInput: boolean;
+        voiceOutput: boolean;
         taskSuggestions: boolean;
         goalAnalysis: boolean;
         ritualGeneration: boolean;
@@ -43,6 +45,8 @@ const defaultSettings: AppSettings = {
     aiPreferences: {
         enabled: true,
         features: {
+            voiceInput: true,
+            voiceOutput: true,
             taskSuggestions: true,
             goalAnalysis: true,
             ritualGeneration: true,
@@ -55,8 +59,24 @@ export const getSettings = (): AppSettings => {
     try {
         const storedSettings = localStorage.getItem(SETTINGS_KEY);
         if (storedSettings) {
-            // Merge stored settings with defaults to handle new settings being added
-            return { ...defaultSettings, ...JSON.parse(storedSettings) };
+            const parsedSettings = JSON.parse(storedSettings);
+            // Merge stored settings with defaults
+            // We need to handle deep merging for aiPreferences to ensure new fields are added
+            const mergedSettings = { ...defaultSettings, ...parsedSettings };
+
+            // Deep merge aiPreferences if it exists in both
+            if (parsedSettings.aiPreferences) {
+                mergedSettings.aiPreferences = {
+                    ...defaultSettings.aiPreferences,
+                    ...parsedSettings.aiPreferences,
+                    features: {
+                        ...defaultSettings.aiPreferences.features,
+                        ...(parsedSettings.aiPreferences.features || {})
+                    }
+                };
+            }
+
+            return mergedSettings;
         }
         return defaultSettings;
     } catch (error) {

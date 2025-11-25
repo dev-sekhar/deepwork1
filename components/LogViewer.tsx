@@ -21,13 +21,27 @@ const getLogLevelClass = (level: LogEntry['level']) => {
 
 export const LogViewer: React.FC<LogViewerProps> = ({ onClose }) => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const logsEndRef = React.useRef<HTMLDivElement>(null);
+  const previousLengthRef = React.useRef<number>(0);
 
   const refreshLogs = () => {
-    setLogs(getLogs());
+    const previousLength = previousLengthRef.current;
+    const newLogs = getLogs();
+    previousLengthRef.current = newLogs.length;
+    setLogs(newLogs);
+    // Auto-scroll to bottom if new logs were added
+    if (newLogs.length > previousLength) {
+      setTimeout(() => {
+        logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
   };
 
   useEffect(() => {
     refreshLogs();
+    // Auto-refresh logs every 500ms to see new logs in real-time
+    const interval = setInterval(refreshLogs, 500);
+    return () => clearInterval(interval);
   }, []);
 
   const handleClearLogs = () => {
@@ -81,6 +95,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ onClose }) => {
                     </div>
                 ))
             )}
+            <div ref={logsEndRef} />
         </main>
         
         <footer className="p-4 border-t border-slate-700 text-right">

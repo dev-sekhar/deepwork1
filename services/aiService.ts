@@ -57,15 +57,129 @@ async function generateContentWithGemini(
 
 // --- EXPORTED API FUNCTIONS ---
 
+export interface ConversationContext {
+  taskName?: string;
+  itemType?: ScheduleItemType;
+  durationMinutes?: number;
+  goal?: string | null;
+  startDate?: string;
+  repeatFrequency?: 'ONCE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  repeatOn?: number[] | null;
+  conversationHistory?: Array<{ speaker: 'user' | 'assistant', text: string }>;
+}
+
+export interface ConversationResponse {
+  updatedContext: Partial<ConversationContext>;
+  response: string | null; // What the assistant should say (null if no response needed)
+  isComplete: boolean; // Whether we have enough info to create the task
+  missingFields: string[]; // What information is still needed
+}
+
+export async function processConversationTurn(
+  userInput: string,
+  currentContext: ConversationContext,
+  onStatusUpdate: (status: string) => void
+): Promise<ConversationResponse> {
+  const { aiPersonalization } = getSettings();
+  const conversationHistory = currentContext.conversationHistory || [];
+  
+  const prompt = `
+You are a helpful voice assistant for a task scheduling app. You're having a conversation with a user to schedule a task.
+
+Current context (what we know so far):
+${JSON.stringify(currentContext, null, 2)}
+
+Conversation history:
+${conversationHistory.map(t => `${t.speaker}: ${t.text}`).join('\n')}
+
+User just said: "${userInput}"
+
+Your task:
+1. Extract any new information from the user's input and update the context
+2. Determine what information is still missing to create a complete task
+3. Generate a natural, conversational response (or null if no response needed)
+4. Indicate if we have enough information to create the task
+
+Required fields for a complete task:
+- taskName: The name of the task
+- itemType: Either 'DEEP_WORK' or 'SHALLOW_WORK'
+- durationMinutes: How long the task should take (default: 90 for DEEP_WORK, 30 for SHALLOW_WORK)
+- startDate: When to schedule it (ISO 8601 string)
+- repeatFrequency: 'ONCE', 'DAILY', 'WEEKLY', or 'MONTHLY' (default: 'ONCE')
+- repeatOn: For WEEKLY tasks, array of day numbers 0-6 (0=Sunday, 6=Saturday), or null
+- goal: For DEEP_WORK tasks, a clear goal statement (optional but recommended)
+
+Current date: ${new Date().toISOString()}
+
+Guidelines:
+- Be conversational and natural, not robotic
+- Ask for missing information in a friendly way
+- If the user provides multiple pieces of information, acknowledge and extract all of it
+- For DEEP_WORK tasks, try to get a goal if possible
+- Parse dates naturally: "tomorrow at 3pm", "next Monday", "in 2 hours", etc.
+- Parse recurring patterns: "daily", "every weekday", "Monday and Wednesday", "monthly", etc.
+- If the user says something like "yes", "ok", "sure" in response to a question, use context to understand what they're confirming
+- Keep responses concise for voice interaction (1-2 sentences max)
+
+Return a JSON object with:
+{
+  "updatedContext": { /* updated context with any new information extracted */ },
+  "response": "What you should say to the user, or null if no response needed",
+  "isComplete": true/false,
+  "missingFields": ["array of field names that are still missing"]
+}
+`;
+
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      updatedContext: {
+        type: Type.OBJECT,
+        properties: {
+          taskName: { type: Type.STRING, nullable: true },
+          itemType: { type: Type.STRING, enum: [ScheduleItemType.DEEP_WORK, ScheduleItemType.SHALLOW_WORK], nullable: true },
+          durationMinutes: { type: Type.NUMBER, nullable: true },
+          goal: { type: Type.STRING, nullable: true },
+          startDate: { type: Type.STRING, nullable: true },
+          repeatFrequency: { type: Type.STRING, enum: ['ONCE', 'DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
+          repeatOn: { type: Type.ARRAY, items: { type: Type.NUMBER }, nullable: true }
+        }
+      },
+      response: { type: Type.STRING, nullable: true },
+      isComplete: { type: Type.BOOLEAN },
+      missingFields: { type: Type.ARRAY, items: { type: Type.STRING } }
+    }
+  };
+
+  try {
+    logInfo('Processing conversation turn with AI', { userInput, currentContext });
+    onStatusUpdate("Understanding your response...");
+    const response = await generateContentWithGemini({
+      contents: prompt,
+      config: { 
+        responseMimeType: "application/json", 
+        responseSchema: schema,
+        systemInstruction: `You are a friendly, conversational voice assistant helping users schedule tasks. ${aiPersonalization}`
+      },
+    }, (modelName) => onStatusUpdate(`Using fallback model (${modelName})...`));
+    onStatusUpdate("Response understood.");
+    return JSON.parse(response.text.trim());
+  } catch (error: any) {
+    logError('Failed to process conversation turn', { error });
+    onStatusUpdate("AI service failed.");
+    throw new AIServiceError(`Failed to process conversation: ${error.message}`);
+  }
+}
+
 export async function parseNaturalLanguageTask(
     userInput: string,
     onStatusUpdate: (status: string) => void
-): Promise<Partial<TaskSuggestions & { taskName: string, goal: string | null, itemType: ScheduleItemType, durationMinutes: number, startDate: string }>> {
+): Promise<Partial<TaskSuggestions & { taskName: string, goal: string | null, itemType: ScheduleItemType, durationMinutes: number, startDate: string, repeatFrequency?: 'ONCE' | 'DAILY' | 'WEEKLY' | 'MONTHLY', repeatOn?: number[] | null }>> {
 
     const prompt = `
         You are a task scheduler assistant. Parse the user's request: "${userInput}".
         Extract the following details into a JSON object: "taskName", "itemType" ('DEEP_WORK' or 'SHALLOW_WORK'), 
-        "durationMinutes", "goal", and "startDate" (as an ISO 8601 string).
+        "durationMinutes", "goal", "startDate" (as an ISO 8601 string), "repeatFrequency" ('ONCE', 'DAILY', 'WEEKLY', or 'MONTHLY'), and "repeatOn" (array of day numbers 0-6 for WEEKLY, where 0=Sunday, 1=Monday, etc., or null).
 
         Guidelines:
         - If a detail is not mentioned, set its value to null.
@@ -74,6 +188,14 @@ export async function parseNaturalLanguageTask(
           - **Prioritize explicit times.** If the user says "at 4 PM", the time is 16:00. If they say "at 10 AM", the time is 10:00. Do not interpret these as relative durations (e.g., "in 4 hours"). An explicit time always takes precedence.
           - Use the current date to resolve relative dates like 'tomorrow' or 'next Tuesday'.
           - For relative times like 'in 3 hours', calculate from the current date.
+        - **RECURRING TASK RULES:**
+          - If user says "daily", "every day", "each day" → repeatFrequency: 'DAILY', repeatOn: null
+          - If user says "weekly", "every week", "each week" → repeatFrequency: 'WEEKLY', repeatOn: [day of week from startDate as number 0-6]
+          - If user says "on weekdays", "Monday to Friday" → repeatFrequency: 'WEEKLY', repeatOn: [1,2,3,4,5]
+          - If user says "on weekends" → repeatFrequency: 'WEEKLY', repeatOn: [0,6]
+          - If user mentions specific days (e.g., "Monday and Wednesday") → repeatFrequency: 'WEEKLY', repeatOn: [1,3] (Monday=1, Wednesday=3)
+          - If user says "monthly", "every month" → repeatFrequency: 'MONTHLY', repeatOn: null
+          - If no recurring pattern mentioned → repeatFrequency: 'ONCE', repeatOn: null
         - If the task sounds like it requires deep focus (e.g., 'write', 'study', 'code', 'research', 'plan'), default itemType to 'DEEP_WORK'. Otherwise, default to 'SHALLOW_WORK'.
         - If no duration is specified, default to 90 for DEEP_WORK and 30 for SHALLOW_WORK.
         - The user's preferred working hours are 9am to 5pm. If a time is ambiguous (e.g., "in the afternoon"), pick a reasonable time like 2 PM. If the user gives an explicit time, you must respect it, even if it's outside these working hours.
@@ -85,7 +207,9 @@ export async function parseNaturalLanguageTask(
             itemType: { type: Type.STRING, enum: [ScheduleItemType.DEEP_WORK, ScheduleItemType.SHALLOW_WORK], nullable: true },
             durationMinutes: { type: Type.NUMBER, nullable: true },
             goal: { type: Type.STRING, nullable: true },
-            startDate: { type: Type.STRING, nullable: true }
+            startDate: { type: Type.STRING, nullable: true },
+            repeatFrequency: { type: Type.STRING, enum: ['ONCE', 'DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
+            repeatOn: { type: Type.ARRAY, items: { type: Type.NUMBER }, nullable: true }
         }
     };
     try {

@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { AppSettings, Holiday } from '../services/settingsService';
+// SettingsModal.tsx - Rewritten with proper structure and Voice Input toggle
+import React, { useState } from 'react';
 import { TrashIcon, SparklesIcon } from './icons';
 import { Toggle } from './Toggle';
+import { AppSettings } from '../services/settingsService'; // adjust import path as needed
 
 interface SettingsModalProps {
     currentSettings: AppSettings;
@@ -16,10 +17,7 @@ const WEEK_DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const TabButton: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, onClick, children }) => (
     <button
         onClick={onClick}
-        className={`px-4 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition ${active
-                ? 'border-primary-accent text-primary-accent'
-                : 'border-transparent text-slate-400 hover:text-white hover:border-slate-500'
-            }`}
+        className={`px-4 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition ${active ? 'border-primary-accent text-primary-accent' : 'border-transparent text-slate-400 hover:text-white hover:border-slate-500'}`}
     >
         {children}
     </button>
@@ -28,12 +26,9 @@ const TabButton: React.FC<{ active: boolean; onClick: () => void; children: Reac
 export const SettingsModal: React.FC<SettingsModalProps> = ({ currentSettings, onClose, onSave }) => {
     const [settings, setSettings] = useState<AppSettings>(currentSettings);
     const [activeTab, setActiveTab] = useState<Tab>('availability');
-
     const [newHoliday, setNewHoliday] = useState({ description: '', startDate: '', endDate: '' });
 
-    const handleSave = () => {
-        onSave(settings);
-    };
+    const handleSave = () => onSave(settings);
 
     const handleDayToggle = (dayIndex: number) => {
         const days = settings.availability.days.includes(dayIndex)
@@ -53,13 +48,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ currentSettings, o
     const handleRemoveHoliday = (id: string) => {
         const holidays = settings.holidays.filter(h => h.id !== id);
         setSettings(s => ({ ...s, holidays }));
-    }
+    };
 
     const handleAIToggle = (enabled: boolean) => {
-        setSettings(s => ({
-            ...s,
-            aiPreferences: { ...s.aiPreferences, enabled }
-        }));
+        setSettings(s => ({ ...s, aiPreferences: { ...s.aiPreferences, enabled } }));
     };
 
     const handleAIFeatureToggle = (feature: keyof AppSettings['aiPreferences']['features'], enabled: boolean) => {
@@ -78,7 +70,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ currentSettings, o
                 <header className="p-6 text-center border-b border-slate-700">
                     <h2 className="text-2xl font-bold text-primary-accent">Settings</h2>
                 </header>
-
                 <div className="border-b border-slate-700 px-6">
                     <nav className="flex -mb-px overflow-x-auto">
                         <TabButton active={activeTab === 'availability'} onClick={() => setActiveTab('availability')}>Availability</TabButton>
@@ -88,7 +79,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ currentSettings, o
                         <TabButton active={activeTab === 'personalization'} onClick={() => setActiveTab('personalization')}>Persona</TabButton>
                     </nav>
                 </div>
-
                 <main className="flex-1 p-6 space-y-6 overflow-y-auto">
                     {activeTab === 'availability' && (
                         <div className="space-y-6 animate-fade-in">
@@ -100,8 +90,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ currentSettings, o
                                             key={index}
                                             type="button"
                                             onClick={() => handleDayToggle(index)}
-                                            className={`w-10 h-10 rounded-full font-bold text-sm flex items-center justify-center transition ${settings.availability.days.includes(index) ? 'bg-primary text-slate-900' : 'bg-slate-700 hover:bg-slate-600'
-                                                }`}
+                                            className={`w-10 h-10 rounded-full font-bold text-sm flex items-center justify-center transition ${settings.availability.days.includes(index) ? 'bg-primary text-slate-900' : 'bg-slate-700 hover:bg-slate-600'}`}
                                         >{day}</button>
                                     ))}
                                 </div>
@@ -148,7 +137,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ currentSettings, o
                             <div>
                                 <h3 className="text-lg font-semibold text-slate-300 mb-3">Scheduled Time Off</h3>
                                 <div className="space-y-2">
-                                    {settings.holidays.length === 0 ? <p className="text-slate-500 text-center">No time off scheduled.</p> :
+                                    {settings.holidays.length === 0 ? (
+                                        <p className="text-slate-500 text-center">No time off scheduled.</p>
+                                    ) : (
                                         settings.holidays.map(holiday => (
                                             <div key={holiday.id} className="flex justify-between items-center p-3 bg-slate-700/50 rounded-lg">
                                                 <div>
@@ -159,7 +150,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ currentSettings, o
                                                     <TrashIcon className="w-5 h-5" />
                                                 </button>
                                             </div>
-                                        ))}
+                                        ))
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -188,13 +180,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ currentSettings, o
                                     <SparklesIcon className="w-6 h-6 text-violet-400 mt-1" />
                                     <div>
                                         <h3 className="text-lg font-semibold text-violet-100">AI Assistance</h3>
-                                        <p className="text-sm text-violet-300/80 mt-1">
-                                            Configure how Gemini AI helps you plan and focus. Disabling the master switch turns off all AI features.
-                                        </p>
+                                        <p className="text-sm text-violet-300/80 mt-1">Configure how Gemini AI helps you plan and focus. Disabling the master switch turns off all AI features.</p>
                                     </div>
                                 </div>
                             </div>
-
                             <div className="space-y-4">
                                 <Toggle
                                     label="Enable AI Features"
@@ -202,34 +191,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ currentSettings, o
                                     checked={settings.aiPreferences?.enabled ?? true}
                                     onChange={handleAIToggle}
                                 />
-
                                 <div className="pl-4 border-l-2 border-slate-700 space-y-4 ml-2">
+                                    <Toggle
+                                        label="Voice Input"
+                                        description="Use voice commands to create tasks and interact with the app."
+                                        checked={settings.aiPreferences?.features.voiceInput ?? true}
+                                        onChange={checked => handleAIFeatureToggle('voiceInput', checked)}
+                                        disabled={!settings.aiPreferences?.enabled}
+                                    />
+                                    <Toggle
+                                        label="AI Voice Output"
+                                        description="Enable the AI assistant to speak responses back to you."
+                                        checked={settings.aiPreferences?.features.voiceOutput ?? true}
+                                        onChange={checked => handleAIFeatureToggle('voiceOutput', checked)}
+                                        disabled={!settings.aiPreferences?.enabled}
+                                    />
                                     <Toggle
                                         label="Task Suggestions"
                                         description="Get AI suggestions for breaking down tasks and estimating duration."
                                         checked={settings.aiPreferences?.features.taskSuggestions ?? true}
-                                        onChange={(checked) => handleAIFeatureToggle('taskSuggestions', checked)}
+                                        onChange={checked => handleAIFeatureToggle('taskSuggestions', checked)}
                                         disabled={!settings.aiPreferences?.enabled}
                                     />
                                     <Toggle
                                         label="Goal Analysis"
                                         description="Analyze your goals for SMART criteria and clarity."
                                         checked={settings.aiPreferences?.features.goalAnalysis ?? true}
-                                        onChange={(checked) => handleAIFeatureToggle('goalAnalysis', checked)}
+                                        onChange={checked => handleAIFeatureToggle('goalAnalysis', checked)}
                                         disabled={!settings.aiPreferences?.enabled}
                                     />
                                     <Toggle
                                         label="Ritual Generation"
                                         description="Create custom pre-work rituals to help you focus."
                                         checked={settings.aiPreferences?.features.ritualGeneration ?? true}
-                                        onChange={(checked) => handleAIFeatureToggle('ritualGeneration', checked)}
+                                        onChange={checked => handleAIFeatureToggle('ritualGeneration', checked)}
                                         disabled={!settings.aiPreferences?.enabled}
                                     />
                                     <Toggle
                                         label="Task Classification"
                                         description="Suggest whether a task is Deep Work or Shallow Work."
                                         checked={settings.aiPreferences?.features.classification ?? true}
-                                        onChange={(checked) => handleAIFeatureToggle('classification', checked)}
+                                        onChange={checked => handleAIFeatureToggle('classification', checked)}
                                         disabled={!settings.aiPreferences?.enabled}
                                     />
                                 </div>
@@ -252,14 +254,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ currentSettings, o
                         </div>
                     )}
                 </main>
-
                 <footer className="flex justify-end gap-4 p-4 border-t border-slate-700">
-                    <button onClick={onClose} className="px-6 py-2 bg-slate-600 text-white rounded-md hover:bg-slate-500 transition">
-                        Cancel
-                    </button>
-                    <button onClick={handleSave} className="px-6 py-2 bg-primary text-white font-semibold rounded-md hover:bg-primary-focus transition">
-                        Save Settings
-                    </button>
+                    <button onClick={onClose} className="px-6 py-2 bg-slate-600 text-white rounded-md hover:bg-slate-500 transition">Cancel</button>
+                    <button onClick={handleSave} className="px-6 py-2 bg-primary text-white font-semibold rounded-md hover:bg-primary-focus transition">Save Settings</button>
                 </footer>
             </div>
         </div>
