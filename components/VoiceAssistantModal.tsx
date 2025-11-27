@@ -23,12 +23,22 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({ onClos
     return () => {
       stopAssistant();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conversation]);
+
+  const copyConversation = () => {
+    const text = conversation.map(msg => `${msg.speaker.toUpperCase()}: ${msg.text}`).join('\n\n');
+    navigator.clipboard.writeText(text).then(() => {
+      alert('Conversation copied to clipboard!');
+    }).catch(err => {
+      console.error('Failed to copy:', err);
+      alert('Failed to copy conversation');
+    });
+  };
 
   const getStatusIndicator = () => {
     if (errorMessage) {
@@ -52,16 +62,16 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({ onClos
         );
       case 'SPEAKING':
         return (
-           <div className="flex flex-col items-center">
+          <div className="flex flex-col items-center">
             <div className="w-8 h-8 text-cyan-400 relative flex justify-center items-center">
-                <div className="absolute h-full w-full bg-cyan-400/50 rounded-full animate-ping"></div>
-                <SparklesIcon className="w-6 h-6" />
+              <div className="absolute h-full w-full bg-cyan-400/50 rounded-full animate-ping"></div>
+              <SparklesIcon className="w-6 h-6" />
             </div>
             <p className="text-sm text-cyan-400 mt-2">Speaking...</p>
           </div>
         );
       case 'ERROR':
-         return (
+        return (
           <div className="flex flex-col items-center">
             <SparklesIcon className="w-8 h-8 text-yellow-400 animate-spin" />
             <p className="text-sm text-yellow-400 mt-2">Reconnecting...</p>
@@ -75,9 +85,20 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({ onClos
   return (
     <div className="fixed inset-0 bg-black/80 flex flex-col items-center justify-end p-4 z-50 animate-fade-in" onClick={onClose}>
       <div className="bg-slate-800 rounded-2xl shadow-xl w-full max-w-2xl h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <header className="p-4 text-center border-b border-slate-700">
-          <h2 className="text-xl font-bold text-primary-accent">AI Voice Scheduler</h2>
-          <p className="text-sm text-slate-400">Describe the task you want to schedule</p>
+        <header className="p-4 border-b border-slate-700 flex items-center justify-between">
+          <div className="flex-1 text-center">
+            <h2 className="text-xl font-bold text-primary-accent">AI Voice Scheduler</h2>
+            <p className="text-sm text-slate-400">Describe the task you want to schedule</p>
+          </div>
+          {conversation.length > 0 && (
+            <button
+              onClick={copyConversation}
+              className="px-3 py-1.5 bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition text-sm flex-shrink-0"
+              title="Copy conversation to clipboard"
+            >
+              Copy
+            </button>
+          )}
         </header>
 
         <main className="flex-1 p-4 space-y-4 overflow-y-auto">
@@ -105,7 +126,7 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({ onClos
           {getStatusIndicator()}
         </footer>
       </div>
-       <button onClick={onClose} className="mt-4 px-6 py-2 bg-slate-600 text-white rounded-full hover:bg-slate-500 transition">
+      <button onClick={onClose} className="mt-4 px-6 py-2 bg-slate-600 text-white rounded-full hover:bg-slate-500 transition">
         Close
       </button>
     </div>
