@@ -20,7 +20,7 @@ import { getTasksForDate } from './utils/scheduleUtils';
 
 
 type AppView = 'DASHBOARD' | 'SCHEDULING' | 'FOCUS' | 'PRE_SESSION_CHECKLIST' | 'ANALYTICS' | 'HISTORY';
-type ScheduleView = 'TODAY' | 'ONCE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
+type ScheduleView = 'TODAY' | 'ONCE' | 'DAILY' | 'WEEKLY' | 'CUSTOM';
 
 
 // A helper to get YYYY-MM-DD from a Date object in the local timezone.
@@ -36,7 +36,7 @@ const scheduleViewOptions: { name: string; value: ScheduleView }[] = [
     { name: 'Once', value: 'ONCE' },
     { name: 'Daily', value: 'DAILY' },
     { name: 'Weekly', value: 'WEEKLY' },
-    { name: 'Monthly', value: 'MONTHLY' },
+    { name: 'Custom', value: 'CUSTOM' },
 ];
 
 
@@ -495,14 +495,25 @@ const App: React.FC = () => {
             });
     }, [recurringSchedules]);
 
-    const monthlySchedule = useMemo(() => {
-        return recurringSchedules.filter(item => item.repeatFrequency === 'MONTHLY')
+    const customSchedule = useMemo(() => {
+        return recurringSchedules.filter(item => item.repeatFrequency === 'MONTHLY' || (item.repeatFrequency !== 'DAILY' && item.repeatFrequency !== 'WEEKLY'))
             .sort((a, b) => {
                 const timeA = new Date(a.startDate).getHours() * 60 + new Date(a.startDate).getMinutes();
                 const timeB = new Date(b.startDate).getHours() * 60 + new Date(b.startDate).getMinutes();
                 return timeA - timeB;
             });
     }, [recurringSchedules]);
+
+    const getTabCount = (view: ScheduleView) => {
+        switch (view) {
+            case 'TODAY': return todaysSchedule.length;
+            case 'ONCE': return oneTimeSchedule.length;
+            case 'DAILY': return dailySchedule.length;
+            case 'WEEKLY': return weeklySchedule.length;
+            case 'CUSTOM': return customSchedule.length;
+            default: return 0;
+        }
+    };
 
 
     const renderView = () => {
@@ -579,8 +590,15 @@ const App: React.FC = () => {
 
                         <div className="grid grid-cols-5 gap-2 p-1 bg-slate-800 rounded-lg">
                             {scheduleViewOptions.map(({ name, value }) => (
-                                <button key={value} onClick={() => setScheduleView(value)} className={`px-3 py-2 rounded-md text-sm font-semibold transition capitalize ${scheduleView === value ? 'bg-primary text-slate-900' : 'bg-transparent hover:bg-slate-700'}`}>
+                                <button
+                                    key={value}
+                                    onClick={() => setScheduleView(value)}
+                                    className={`px-3 py-2 rounded-md text-sm font-semibold transition capitalize flex items-center justify-center gap-2 ${scheduleView === value ? 'bg-primary text-slate-900' : 'bg-transparent hover:bg-slate-700'}`}
+                                >
                                     {name}
+                                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${scheduleView === value ? 'bg-slate-900/20 text-slate-900' : 'bg-slate-700 text-slate-400'}`}>
+                                        {getTabCount(value)}
+                                    </span>
                                 </button>
                             ))}
                         </div>
@@ -628,13 +646,13 @@ const App: React.FC = () => {
                                     )}
                                 </>
                             )}
-                            {scheduleView === 'MONTHLY' &&
+                            {scheduleView === 'CUSTOM' &&
                                 <>
-                                    <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">Monthly Tasks</h2>
-                                    {monthlySchedule.length === 0 ? (
-                                        <p className="text-center text-slate-400 py-8">No monthly tasks scheduled.</p>
+                                    <h2 className="text-xl font-semibold text-slate-300 border-b border-slate-700 pb-2">Custom Tasks</h2>
+                                    {customSchedule.length === 0 ? (
+                                        <p className="text-center text-slate-400 py-8">No custom tasks scheduled.</p>
                                     ) : (
-                                        renderScheduleList(monthlySchedule)
+                                        renderScheduleList(customSchedule)
                                     )}
                                 </>
                             }
