@@ -497,7 +497,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                     )}
 
                     <div> {/* Wrapper for all action buttons */}
-                        {process.env.API_KEY && (
+                        {process.env.API_KEY && itemType === ScheduleItemType.DEEP_WORK && (
                             <div className="mb-4 pt-4">
                                 <button
                                     type="button"
