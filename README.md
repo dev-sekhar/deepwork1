@@ -4,7 +4,7 @@
 
 # Deep Work Time Manager
 
-A powerful, AI-enhanced productivity tool designed to help you master your time, sustain focus, and achieve your goals through structured deep work sessions.
+A powerful, AI-enhanced productivity tool designed to help you master your time, sustain focus, and achieve your goals through structured deep work sessions. This is based on the book "Deep Work" by Cal Newport.
 
 ## 🚀 Features
 
