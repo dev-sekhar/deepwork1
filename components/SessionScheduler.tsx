@@ -5,6 +5,7 @@ import { getTaskSuggestions, AIServiceError, TaskSuggestions } from '../services
 import { SparklesIcon, CheckIcon, InformationCircleIcon } from './icons';
 import { AppSettings } from '../services/settingsService';
 import { ClassificationGuideModal } from './ClassificationGuideModal';
+import { TokenConfirmDialog } from './TokenConfirmDialog';
 
 interface SessionSchedulerProps {
     onAddItem: (item: ScheduleItem) => void;
@@ -43,6 +44,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
 
     const [aiNotification, setAiNotification] = useState<string | null>(null);
     const [isGuideOpen, setIsGuideOpen] = useState(false);
+    const [isTokenDialogOpen, setIsTokenDialogOpen] = useState(false);
 
     const handleStatusUpdate = useCallback((status: string) => {
         setAiNotification(status);
@@ -61,11 +63,16 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
         );
     };
 
-    const handleGetAISuggestions = async () => {
+    const handleRequestAISuggestions = () => {
         if (!taskName || (itemType === ScheduleItemType.DEEP_WORK && !goal)) {
             setError("Please provide a task name (and goal for Deep Work) before getting suggestions.");
             return;
         }
+        setIsTokenDialogOpen(true);
+    };
+
+    const handleConfirmAISuggestions = async () => {
+        setIsTokenDialogOpen(false);
         setIsFetchingSuggestions(true);
         setError(null);
         try {
@@ -243,6 +250,12 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
 
     return (
         <>
+            <TokenConfirmDialog
+                isOpen={isTokenDialogOpen}
+                onConfirm={handleConfirmAISuggestions}
+                onCancel={() => setIsTokenDialogOpen(false)}
+                estimatedCost="~150 tokens"
+            />
             {isGuideOpen && <ClassificationGuideModal onClose={() => setIsGuideOpen(false)} />}
             <div className="p-6 bg-slate-800 rounded-lg shadow-lg w-full max-w-md mx-auto animate-fade-in-up">
                 {aiNotification && (
@@ -501,7 +514,7 @@ export const SessionScheduler: React.FC<SessionSchedulerProps> = ({ onAddItem, o
                             <div className="mb-4 pt-4">
                                 <button
                                     type="button"
-                                    onClick={handleGetAISuggestions}
+                                    onClick={handleRequestAISuggestions}
                                     disabled={isFetchingSuggestions}
                                     className="w-full px-6 py-3 bg-violet-600 text-white font-semibold rounded-md hover:bg-violet-700 transition flex items-center justify-center gap-2 disabled:bg-slate-600 disabled:cursor-not-allowed"
                                 >
